@@ -1,0 +1,2526 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>北京公园年票地图 · V2</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <meta name="theme-color" content="#667eea" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="北京年票地图" />
+    <link rel="apple-touch-icon" href="icon.svg" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+
+        #map { position: absolute; top: 0; left: 300px; right: 0; bottom: 0; }
+
+        #sidebar {
+            position: absolute; top: 0; left: 0; bottom: 0; width: 300px;
+            background: #fff; border-right: 1px solid #e0e0e0;
+            display: flex; flex-direction: column; z-index: 1000;
+            box-shadow: 2px 0 8px rgba(0,0,0,0.1);
+        }
+        #sidebar-header {
+            padding: 14px 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff; flex-shrink: 0;
+        }
+        #sidebar-header h1 { font-size: 17px; margin-bottom: 4px; }
+        #sidebar-header p { font-size: 11px; opacity: 0.9; }
+
+        #sidebar-content { flex: 1; overflow-y: auto; padding: 12px; }
+
+        .filter-section { margin-bottom: 14px; }
+        .filter-section h3 { font-size: 12px; color: #666; margin-bottom: 7px; }
+
+        .filter-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+        .region-sub { margin-top: 7px; padding-left: 8px; border-left: 2px solid #d9e2ec; }
+        .chip-hint { font-size: 11px; color: #9aa5b1; padding: 2px 4px; }
+        .chip {
+            padding: 4px 10px; border-radius: 14px; font-size: 12px;
+            border: 1px solid #ddd; background: #f8f8f8; cursor: pointer;
+            transition: all 0.2s; user-select: none;
+        }
+        .chip:hover { border-color: #667eea; color: #667eea; }
+        .chip.active { background: #667eea; color: #fff; border-color: #667eea; }
+
+        #search-box {
+            width: 100%; padding: 8px 12px; border: 1px solid #ddd;
+            border-radius: 20px; font-size: 13px; outline: none;
+            transition: border-color 0.2s;
+        }
+        #search-box:focus { border-color: #667eea; }
+
+        .locate-row { display: flex; gap: 6px; margin-bottom: 14px; }
+        .locate-btn {
+            flex: 1; padding: 7px 8px; border: none; border-radius: 8px;
+            font-size: 12px; cursor: pointer; color: #fff; transition: opacity .2s;
+        }
+        .locate-btn:hover { opacity: .88; }
+        .locate-btn.geo { background: #2ecc71; }
+        .locate-btn.preset { background: #e67e22; }
+        .locate-btn.clear { background: #95a5a6; }
+
+        #stats { font-size: 12px; color: #888; margin-bottom: 8px; }
+
+        .legend { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+        .legend-item { display: flex; align-items: center; gap: 4px; font-size: 11px; color: #555; }
+        .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+        /* Result list */
+        #result-list { list-style: none; }
+        #result-list li {
+            padding: 8px 10px; border-radius: 8px; margin-bottom: 6px;
+            background: #f8f8fb; cursor: pointer; transition: background .15s;
+            border: 1px solid transparent;
+        }
+        #result-list li:hover { background: #eef0ff; border-color: #c7ccff; }
+        #result-list .r-name { font-size: 13px; color: #333; font-weight: 600; }
+        #result-list .r-meta { font-size: 11px; color: #888; margin-top: 3px; display: flex; gap: 8px; flex-wrap: wrap; }
+        #result-list .r-dist { color: #e67e22; font-weight: 600; }
+        .badge { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; }
+        .badge-5a { background: #ff6b6b; color: #fff; }
+        .badge-4a { background: #ffa502; color: #fff; }
+        .badge-3a { background: #7bed9f; color: #333; }
+        .badge-2a { background: #70a1ff; color: #fff; }
+        .badge-in { background: #9b59b6; color: #fff; }
+        .badge-out { background: #1abc9c; color: #fff; }
+        .badge-cat { background: #dfe6e9; color: #2f3640; }
+
+        /* Popup */
+        .popup-card { min-width: 240px; max-width: 280px; }
+        .popup-card h3 { font-size: 15px; margin-bottom: 8px; color: #333; }
+        .popup-card .popup-row { font-size: 12px; color: #555; margin-bottom: 4px; line-height: 1.6; }
+        .popup-card .popup-row strong { color: #333; }
+        .popup-card .popup-badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; margin-left: 6px; }
+        .popup-nav { display: inline-block; margin: 6px 4px 0 0; padding: 5px 10px; border-radius: 14px; text-decoration: none; font-size: 12px; color: #fff; }
+        .nav-amap { background: #2ecc71; }
+        .nav-baidu { background: #3385ff; }
+        .nav-tencent { background: #ff9f1a; }
+
+        /* App 内导航路线面板 */
+        .popup-nav-btn { display:inline-block; margin:6px 4px 0 0; padding:6px 12px; border:none; border-radius:14px; font-size:12px; color:#fff; cursor:pointer; }
+        .nav-inapp { background:#764ba2; }
+        .nav-inapp:hover { opacity:.9; }
+        .route-panel {
+            position: absolute; left: 300px; right: 0; bottom: 0; z-index: 1200;
+            display: none; flex-direction: column;
+            max-height: 45%; background: rgba(255,255,255,0.97);
+            box-shadow: 0 -2px 12px rgba(0,0,0,0.18);
+        }
+        .route-head { display:flex; align-items:center; justify-content:space-between; padding:10px 14px; border-bottom:1px solid #eee; font-weight:600; color:#333; }
+        .route-close { border:none; background:#eee; border-radius:50%; width:26px; height:26px; cursor:pointer; font-size:14px; }
+        .route-summary { display:flex; flex-wrap:wrap; gap:8px; padding:8px 14px; font-size:12px; color:#555; border-bottom:1px solid #f2f2f2; }
+        .route-summary span { background:#f3f0fa; color:#5b3fa0; padding:2px 8px; border-radius:10px; }
+        .route-steps { overflow-y:auto; padding:8px 14px 16px; }
+        .route-step { display:flex; gap:10px; padding:8px 0; border-bottom:1px dashed #eee; }
+        .rs-num { flex-shrink:0; width:22px; height:22px; border-radius:50%; background:#764ba2; color:#fff; font-size:12px; display:flex; align-items:center; justify-content:center; }
+        .rs-text { font-size:13px; color:#333; line-height:1.5; }
+        .rs-dist { font-size:11px; color:#999; margin-top:2px; }
+        @media (max-width: 768px) {
+            .route-panel { left: 0; max-height: 50%; }
+        }
+
+        .custom-marker {
+            display: flex; align-items: center; justify-content: center;
+            width: 26px; height: 26px; border-radius: 50%;
+            border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            font-size: 13px; transition: transform 0.2s;
+        }
+        .custom-marker:hover { transform: scale(1.2); }
+
+        #toggle-sidebar {
+            position: absolute; top: 10px; left: 310px; z-index: 1001;
+            background: #fff; border: none; border-radius: 4px;
+            padding: 8px 12px; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.2); font-size: 14px;
+        }
+        #toggle-sidebar:hover { background: #f0f0f0; }
+
+        @media (max-width: 768px) {
+            #sidebar { width: 100%; height: 220px; bottom: auto; right: 0; }
+            #map { top: 220px; left: 0; }
+            #toggle-sidebar { left: 10px; top: 230px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="sidebar">
+        <div id="sidebar-header">
+            <h1>🗺️ 北京公园年票地图</h1>
+            <p id="header-sub">覆盖京津冀 130 个景点 · 2026 年票</p>
+        </div>
+        <div id="sidebar-content">
+            <div class="filter-section">
+                <input type="text" id="search-box" placeholder="🔍 搜索名称/地区/地址/免票政策">
+            </div>
+
+            <div class="locate-row">
+                <button class="locate-btn geo" onclick="locateMe()">📍 定位到我</button>
+                <button class="locate-btn preset" onclick="setPreset(40.0430,116.3330,'观林园')">🏠 观林园</button>
+                <button class="locate-btn clear" onclick="clearLocation()" title="清除定位">✕</button>
+            </div>
+
+            <div class="filter-section">
+                <h3>🏠 室内 / 室外</h3>
+                <div class="filter-chips" id="indoor-filters">
+                    <span class="chip active" data-indoor="all">不限</span>
+                    <span class="chip" data-indoor="indoor">室内</span>
+                    <span class="chip" data-indoor="outdoor">室外</span>
+                </div>
+            </div>
+
+            <div class="filter-section">
+                <h3>📍 区域</h3>
+                <div class="filter-chips" id="region-top"></div>
+                <div class="filter-chips region-sub" id="region-sub"></div>
+            </div>
+
+            <div class="filter-section">
+                <h3>🏷️ 景区等级</h3>
+                <div class="filter-chips" id="level-filters">
+                    <span class="chip active" data-level="all">全部</span>
+                    <span class="chip" data-level="5A">5A</span>
+                    <span class="chip" data-level="4A">4A</span>
+                    <span class="chip" data-level="3A">3A</span>
+                    <span class="chip" data-level="2A">2A</span>
+                    <span class="chip" data-level="none">无等级</span>
+                </div>
+            </div>
+
+            <div class="filter-section">
+                <h3>💰 票价类型</h3>
+                <div class="filter-chips" id="price-filters">
+                    <span class="chip active" data-price="all">全部</span>
+                    <span class="chip" data-price="unlimited">不限次</span>
+                    <span class="chip" data-price="free1">免1次</span>
+                    <span class="chip" data-price="free2">免2次</span>
+                    <span class="chip" data-price="free3">免3次</span>
+                </div>
+            </div>
+
+            <div class="filter-section">
+                <h3>🗂️ 景点类型</h3>
+                <div class="filter-chips" id="category-filters"></div>
+            </div>
+
+            <div id="stats"></div>
+
+            <div class="legend">
+                <div class="legend-item"><span class="legend-dot" style="background:#e74c3c"></span>北京市区</div>
+                <div class="legend-item"><span class="legend-dot" style="background:#e67e22"></span>北京郊区</div>
+                <div class="legend-item"><span class="legend-dot" style="background:#3498db"></span>河北</div>
+                <div class="legend-item"><span class="legend-dot" style="background:#9b59b6"></span>天津</div>
+            </div>
+
+            <div class="filter-section">
+                <h3>📋 结果列表（点击定位）</h3>
+                <ul id="result-list"></ul>
+            </div>
+        </div>
+    </div>
+
+    <button id="toggle-sidebar" onclick="toggleSidebar()">☰</button>
+    <div id="map"></div>
+
+    <div id="route-panel" class="route-panel">
+        <div class="route-head">
+            <span id="route-title">🧭 路线规划</span>
+            <button id="route-close" class="route-close">✕</button>
+        </div>
+        <div id="route-summary" class="route-summary"></div>
+        <div id="route-steps" class="route-steps"></div>
+    </div>
+
+    <script>
+// 自动生成，请勿手改。来源: geocoded_spots.json (2026年票/京津冀名胜文化旅游年卡)
+// 重新生成: python gen_data.py
+window.SPOTS_META = {"schema_version": 1, "year": 2026, "source": "geocoded_spots.json", "generated": "2026-07-19"};
+window.SPOTS_CATEGORIES = [{"key": "公园花园", "emoji": "🌳", "label": "公园花园"}, {"key": "森林公园", "emoji": "🌲", "label": "森林公园"}, {"key": "自然山水", "emoji": "⛰️", "label": "自然山水"}, {"key": "长城古建", "emoji": "🏯", "label": "长城古建"}, {"key": "博物馆展馆", "emoji": "🏛️", "label": "博物馆展馆"}, {"key": "主题乐园", "emoji": "🎡", "label": "主题乐园"}, {"key": "动物园", "emoji": "🐼", "label": "动物园"}, {"key": "溶洞地质", "emoji": "🕳️", "label": "溶洞地质"}, {"key": "温泉", "emoji": "♨️", "label": "温泉"}, {"key": "滑雪冰雪", "emoji": "⛷️", "label": "滑雪冰雪"}, {"key": "水上游船", "emoji": "🚣", "label": "水上游船"}, {"key": "生态文化", "emoji": "🌾", "label": "生态文化"}, {"key": "酒庄酒文", "emoji": "🍷", "label": "酒庄酒文"}, {"key": "科普研学", "emoji": "🔬", "label": "科普研学"}, {"key": "其他", "emoji": "📍", "label": "其他"}];
+window.SPOTS = [
+  {
+    "name": "蟒山国家森林公园",
+    "region": "昌平区",
+    "price": "30元（不限次）",
+    "hours": "8:00-18:00",
+    "phone": "010-88203003",
+    "address": "昌平区十三陵水库东侧",
+    "free_policy": "1.2米或6岁以下、退休士官、武警、60岁以上老人、消防员、现役/退役军人免费",
+    "note": "3A",
+    "lat": 40.264324,
+    "lng": 116.293539,
+    "indoor": "outdoor",
+    "category": "森林公园"
+  },
+  {
+    "name": "北京后花园(白虎涧)",
+    "region": "昌平区",
+    "price": "60元（不限次）",
+    "hours": "07:30-17:30",
+    "phone": "010-60707588",
+    "address": "昌平区阳坊镇后二路",
+    "free_policy": "1.2米或6岁以下儿童免费",
+    "note": "",
+    "lat": 40.125465,
+    "lng": 116.098648,
+    "indoor": "mixed",
+    "category": "自然山水"
+  },
+  {
+    "name": "居庸关长城",
+    "region": "昌平区",
+    "price": "40元（免1次）",
+    "hours": "8:30-17:00",
+    "phone": "010-69771665",
+    "address": "昌平区南口镇居庸关村",
+    "free_policy": "18岁以下、60岁以上、残疾人、现役/退役军人、消防员免费",
+    "note": "4A",
+    "lat": 40.291161,
+    "lng": 116.073088,
+    "indoor": "outdoor",
+    "category": "长城古建"
+  },
+  {
+    "name": "明十三陵-长陵",
+    "region": "昌平区",
+    "price": "45元（免1次）",
+    "hours": "8:30-17:00",
+    "phone": "010-60761008",
+    "address": "昌平区十三陵镇长陵",
+    "free_policy": "1.2米以下、60岁以上、残疾人、现役军人、离休干部免费",
+    "note": "5A",
+    "lat": 40.300235,
+    "lng": 116.248804,
+    "indoor": "outdoor",
+    "category": "长城古建"
+  },
+  {
+    "name": "明十三陵-昭陵",
+    "region": "昌平区",
+    "price": "35元（免3次）",
+    "hours": "8:30-17:00",
+    "phone": "010-60761435",
+    "address": "昌平区十三陵特区内",
+    "free_policy": "1.2米以下、60岁以上、残疾人、现役军人免费",
+    "note": "5A",
+    "lat": 40.291272,
+    "lng": 116.217826,
+    "indoor": "outdoor",
+    "category": "长城古建"
+  },
+  {
+    "name": "银山塔林",
+    "region": "昌平区",
+    "price": "20元（免3次）",
+    "hours": "8:00-16:00",
+    "phone": "010-89726426",
+    "address": "昌平区西湖村",
+    "free_policy": "1.2米或7岁以下、60岁以上、残疾人、消防员、现役/退役军人免费",
+    "note": "4A",
+    "lat": 40.319932,
+    "lng": 116.32785,
+    "indoor": "outdoor",
+    "category": "长城古建"
+  },
+  {
+    "name": "熊猫一二三",
+    "region": "昌平区",
+    "price": "59元（免2次）",
+    "hours": "09:00-17:00",
+    "phone": "4006666217",
+    "address": "昌平区东北路八仙百年梨园内",
+    "free_policy": "",
+    "note": "",
+    "lat": 40.112527,
+    "lng": 116.418757,
+    "indoor": "mixed",
+    "category": "动物园"
+  },
+  {
+    "name": "袋鼠一二三",
+    "region": "昌平区",
+    "price": "68元（免2次）",
+    "hours": "09:00-17:00",
+    "phone": "4006666217",
+    "address": "昌平区小汤山镇秦北路",
+    "free_policy": "",
+    "note": "",
+    "lat": 40.219507,
+    "lng": 116.461344,
+    "indoor": "mixed",
+    "category": "动物园"
+  },
+  {
+    "name": "燕子湖自然风景区",
+    "region": "昌平区",
+    "price": "18元（免1次）",
+    "hours": "09:00-17:00",
+    "phone": "13260335187",
+    "address": "昌平区十三陵镇德胜口大桥西",
+    "free_policy": "1.2米以下免费",
+    "note": "",
+    "lat": 40.295348,
+    "lng": 116.195161,
+    "indoor": "outdoor",
+    "category": "自然山水"
+  },
+  {
+    "name": "龙脉温泉竹林汤泉",
+    "region": "昌平区",
+    "price": "150元（免1次）",
+    "hours": "9:00-21:00",
+    "phone": "010-61782443",
+    "address": "昌平区温泉路龙脉度假村",
+    "free_policy": "",
+    "note": "4A",
+    "lat": 40.179153,
+    "lng": 116.399493,
+    "indoor": "indoor",
+    "category": "温泉"
+  },
+  {
+    "name": "静之湖石涌泉汤泉",
+    "region": "昌平区",
+    "price": "198元（免1次）",
+    "hours": "9:00-22:00",
+    "phone": "010-61709988",
+    "address": "昌平区兴寿镇桃峪口村下路",
+    "free_policy": "1.2米以下免费",
+    "note": "",
+    "lat": 40.245316,
+    "lng": 116.442044,
+    "indoor": "indoor",
+    "category": "温泉"
+  },
+  {
+    "name": "北方轻武器博物馆",
+    "region": "昌平区",
+    "price": "30元（不限次）",
+    "hours": "09:00-17:00",
+    "phone": "010-80190380",
+    "address": "昌平区南口镇马坊村1号",
+    "free_policy": "70岁以上、现役军人免费",
+    "note": "",
+    "lat": 40.239929,
+    "lng": 116.103433,
+    "indoor": "indoor",
+    "category": "博物馆展馆"
+  },
+  {
+    "name": "小汤山农业园",
+    "region": "昌平区",
+    "price": "30元（不限次）",
+    "hours": "08:30-16:00",
+    "phone": "010-61787260",
+    "address": "昌平区小汤山镇马坊桥东",
+    "free_policy": "",
+    "note": "",
+    "lat": 40.153312,
+    "lng": 116.412146,
+    "indoor": "outdoor",
+    "category": "温泉"
+  },
+  {
+    "name": "造梦空间蹦床乐园",
+    "region": "昌平区",
+    "price": "148元（免1次）",
+    "hours": "10:00-21:00",
+    "phone": "18910290139",
+    "address": "昌平区东小口镇兰各庄村",
+    "free_policy": "",
+    "note": "",
+    "lat": 40.068468,
+    "lng": 116.375431,
+    "indoor": "indoor",
+    "category": "主题乐园"
+  },
+  {
+    "name": "大岭沟猕猴桃谷",
+    "region": "昌平区",
+    "price": "30元（不限次）",
+    "hours": "08:00-17:00",
+    "phone": "010-69700838",
+    "address": "昌平区十三陵镇大岭沟村",
+    "free_policy": "1.2米以下、60岁以上、残疾人、现役/退役军人免费",
+    "note": "3A",
+    "lat": 40.36942,
+    "lng": 116.224659,
+    "indoor": "outdoor",
+    "category": "自然山水"
+  },
+  {
+    "name": "虎峪风景区",
+    "region": "昌平区",
+    "price": "15元（不限次）",
+    "hours": "08:00-17:30",
+    "phone": "010-69770295",
+    "address": "昌平区虎峪路村北",
+    "free_policy": "1.2米以下、残疾人、现役军人、京籍60岁以上免费",
+    "note": "2A",
+    "lat": 40.264622,
+    "lng": 116.151982,
+    "indoor": "outdoor",
+    "category": "自然山水"
+  },
+  {
+    "name": "大杨山国家森林公园",
+    "region": "昌平区",
+    "price": "15元（不限次）",
+    "hours": "07:00-17:30",
+    "phone": "010-61796474",
+    "address": "昌平区延寿镇木厂村",
+    "free_policy": "1.2米以下、60岁以上、残疾人、现役军人免费",
+    "note": "2A",
+    "lat": 40.312361,
+    "lng": 116.423142,
+    "indoor": "outdoor",
+    "category": "森林公园"
+  },
+  {
+    "name": "十三陵林下体验园",
+    "region": "昌平区",
+    "price": "60元（免1次）",
+    "hours": "09:00-17:00",
+    "phone": "17325666088",
+    "address": "昌平区十三陵镇110国道",
+    "free_policy": "1.2米以下、现役/退役军人、消防员免费",
+    "note": "2A",
+    "lat": 40.248757,
+    "lng": 116.188921,
+    "indoor": "outdoor",
+    "category": "长城古建"
+  },
+  {
+    "name": "凤凰岭自然风景区",
+    "region": "海淀区",
+    "price": "25元（免3次）",
+    "hours": "07:30-17:00",
+    "phone": "010-62459492",
+    "address": "海淀区苏家坨镇凤凰岭路",
+    "free_policy": "1.2米或6岁以下、65岁以上、现役军人、残疾人、离休、烈属、消防、武警免费",
+    "note": "4A",
+    "lat": 40.113198,
+    "lng": 116.12096,
+    "indoor": "outdoor",
+    "category": "自然山水"
+  },
+  {
+    "name": "西山国家森林公园",
+    "region": "海淀区",
+    "price": "10元（不限次）",
+    "hours": "07:00-18:00",
+    "phone": "010-62720251",
+    "address": "海淀区闵庄路与香山南路口",
+    "free_policy": "1.2米或6岁以下、60岁以上、现役军人、消防员、见义勇为、京籍残疾警、武警免费",
+    "note": "3A",
+    "lat": 39.973053,
+    "lng": 116.206347,
+    "indoor": "outdoor",
+    "category": "森林公园"
+  },
+  {
+    "name": "中国京西皮影非遗园",
+    "region": "海淀区",
+    "price": "100元（免1次）",
+    "hours": "09:00-16:00",
+    "phone": "010-62409612",
+    "address": "海淀区上庄白水洼村路东",
+    "free_policy": "1米以下儿童免费",
+    "note": "",
+    "lat": 40.137474,
+    "lng": 116.217621,
+    "indoor": "indoor",
+    "category": "生态文化"
+  },
+  {
+    "name": "纪晓岚故居",
+    "region": "西城区",
+    "price": "10元（不限次）",
+    "hours": "09:00-18:00",
+    "phone": "010-63036712",
+    "address": "西城区珠市口西大街241号",
+    "free_policy": "1.3米以下、60岁以上、现役、离退休、伤残/退役军人、残疾人免费",
+    "note": "",
+    "lat": 39.890058,
+    "lng": 116.387191,
+    "indoor": "indoor",
+    "category": "长城古建"
+  },
+  {
+    "name": "紫檀博物院",
+    "region": "朝阳区",
+    "price": "50元（免1次）",
+    "hours": "09:00-17:00",
+    "phone": "010-85752818",
+    "address": "朝阳区建国路23号",
+    "free_policy": "1.2米或6岁以下、65岁以上、残疾人免费",
+    "note": "4A",
+    "lat": 39.921353,
+    "lng": 116.397603,
+    "indoor": "indoor",
+    "category": "博物馆展馆"
+  },
+  {
+    "name": "熊猫亲子乐园",
+    "region": "朝阳区",
+    "price": "49.9元（免1次）",
+    "hours": "09:00-18:00",
+    "phone": "13311515277",
+    "address": "朝阳区盛华屯夜市",
+    "free_policy": "80cm以下儿童免费",
+    "note": "",
+    "lat": 39.876193,
+    "lng": 116.540293,
+    "indoor": "indoor",
+    "category": "动物园"
+  },
+  {
+    "name": "亮马河游船(日航)",
+    "region": "朝阳区",
+    "price": "39元（免1次）",
+    "hours": "10:00-17:30",
+    "phone": "4008922992",
+    "address": "朝阳区蓝色港湾码头",
+    "free_policy": "",
+    "note": "",
+    "lat": 39.950549,
+    "lng": 116.475275,
+    "indoor": "outdoor",
+    "category": "水上游船"
+  },
+  {
+    "name": "蟹岛冰雪大世界",
+    "region": "朝阳区",
+    "price": "120元（免2次）",
+    "hours": "09:00-16:00",
+    "phone": "13381093640",
+    "address": "朝阳区蟹岛度假村荷花池",
+    "free_policy": "",
+    "note": "",
+    "lat": 40.01799,
+    "lng": 116.547732,
+    "indoor": "indoor",
+    "category": "滑雪冰雪"
+  },
+  {
+    "name": "首钢大跳台",
+    "region": "石景山区",
+    "price": "58元（免1次）",
+    "hours": "10:00-18:00",
+    "phone": "13910207702",
+    "address": "石景山区首钢园内",
+    "free_policy": "",
+    "note": "",
+    "lat": 39.906304,
+    "lng": 116.223015,
+    "indoor": "mixed",
+    "category": "滑雪冰雪"
+  },
+  {
+    "name": "首钢SoReal乐园",
+    "region": "石景山区",
+    "price": "139元（免1次）",
+    "hours": "13:30-19:00",
+    "phone": "010-88295181",
+    "address": "石景山区石景山路68号",
+    "free_policy": "3岁以下免费",
+    "note": "",
+    "lat": 39.915917,
+    "lng": 116.155727,
+    "indoor": "indoor",
+    "category": "主题乐园"
+  },
+  {
+    "name": "石景山飞越世界",
+    "region": "石景山区",
+    "price": "88元（免1次）",
+    "hours": "9:00-16:30",
+    "phone": "400-890-8889",
+    "address": "石景山区石景山路25号",
+    "free_policy": "",
+    "note": "",
+    "lat": 39.906304,
+    "lng": 116.223015,
+    "indoor": "outdoor",
+    "category": "主题乐园"
+  },
+  {
+    "name": "石景山游乐园",
+    "region": "石景山区",
+    "price": "10元（免1次）",
+    "hours": "9:00-16:30",
+    "phone": "400-890-8889",
+    "address": "石景山区石景山路25号",
+    "free_policy": "",
+    "note": "",
+    "lat": 39.911986,
+    "lng": 116.208645,
+    "indoor": "outdoor",
+    "category": "主题乐园"
+  },
+  {
+    "name": "绿野仙踪郊野乐园",
+    "region": "丰台区",
+    "price": "58元（免2次）",
+    "hours": "09:00-18:00",
+    "phone": "010-83376456",
+    "address": "丰台区后甫营路西庄店",
+    "free_policy": "",
+    "note": "",
+    "lat": 39.843153,
+    "lng": 116.097372,
+    "indoor": "outdoor",
+    "category": "主题乐园"
+  },
+  {
+    "name": "莲花山滑雪场",
+    "region": "顺义区",
+    "price": "128元（免1次）",
+    "hours": "8:30-21:30",
+    "phone": "010-61488111",
+    "address": "顺义区张镇良山东路228号",
+    "free_policy": "",
+    "note": "",
+    "lat": 40.144696,
+    "lng": 116.92517,
+    "indoor": "outdoor",
+    "category": "滑雪冰雪"
+  },
+  {
+    "name": "瑞麟湾度假酒店温泉",
+    "region": "顺义区",
+    "price": "60元（免1次）",
+    "hours": "17:00-22:00",
+    "phone": "010-89468899",
+    "address": "顺义区顺平辅线39号",
+    "free_policy": "1.2米以下免费",
+    "note": "",
+    "lat": 40.135097,
+    "lng": 116.734358,
+    "indoor": "indoor",
+    "category": "温泉"
+  },
+  {
+    "name": "考拉大冒险",
+    "region": "顺义区",
+    "price": "90元（免1次）",
+    "hours": "9:00-18:00",
+    "phone": "4000566028",
+    "address": "顺义区顺密路与北小营大街口",
+    "free_policy": "",
+    "note": "",
+    "lat": 40.204853,
+    "lng": 116.727792,
+    "indoor": "indoor",
+    "category": "主题乐园"
+  },
+  {
+    "name": "乔波室内滑雪场",
+    "region": "顺义区",
+    "price": "138元（免1次）",
+    "hours": "10:00-17:00",
+    "phone": "010-69411999",
+    "address": "顺义区顺安路6号",
+    "free_policy": "",
+    "note": "",
+    "lat": 39.904179,
+    "lng": 116.407387,
+    "indoor": "indoor",
+    "category": "滑雪冰雪"
+  },
+  {
+    "name": "北京国际鲜花港",
+    "region": "顺义区",
+    "price": "30元（不限次）",
+    "hours": "8:30-17:30",
+    "phone": "010-61417123",
+    "address": "顺义区杨镇鲜花港南路",
+    "free_policy": "1.3米以下、60岁以上、现役、残疾人、烈属、退役军人、劳模免费",
+    "note": "4A",
+    "lat": 40.181617,
+    "lng": 116.796608,
+    "indoor": "outdoor",
+    "category": "公园花园"
+  },
+  {
+    "name": "未来亲子网绳乐园",
+    "region": "顺义区",
+    "price": "180元（免1次）",
+    "hours": "9:00-17:00",
+    "phone": "010-52909867",
+    "address": "顺义区谷子地开心农场内",
+    "free_policy": "",
+    "note": "",
+    "lat": 40.12753,
+    "lng": 116.550348,
+    "indoor": "indoor",
+    "category": "主题乐园"
+  },
+  {
+    "name": "河北民俗文化园",
+    "region": "顺义区",
+    "price": "60元（不限次）",
+    "hours": "9:00-16:00",
+    "phone": "010-60418580",
+    "address": "顺义区南彩镇河北村东路",
+    "free_policy": "1.2米以下、现役军人免费",
+    "note": "3A",
+    "lat": 40.1316,
+    "lng": 116.729,
+    "indoor": "outdoor",
+    "category": "生态文化"
+  },
+  {
+    "name": "八达岭森林公园",
+    "region": "延庆区",
+    "price": "33元（不限次）",
+    "hours": "08:00-17:00",
+    "phone": "010-81181458",
+    "address": "延庆区八达岭镇青龙桥旧站西",
+    "free_policy": "1.2米或6岁以下、60岁以上、现役、残疾人免费",
+    "note": "3A",
+    "lat": 40.347439,
+    "lng": 116.019453,
+    "indoor": "outdoor",
+    "category": "森林公园"
+  },
+  {
+    "name": "九眼楼生态长城",
+    "region": "延庆区",
+    "price": "40元（不限次）",
+    "hours": "09:00-16:30",
+    "phone": "010-60186019",
+    "address": "延庆区石窑村东南侧",
+    "free_policy": "1.2米以下、60岁以上、现役、残疾人、消防员免费",
+    "note": "",
+    "lat": 40.495709,
+    "lng": 116.479455,
+    "indoor": "outdoor",
+    "category": "长城古建"
+  },
+  {
+    "name": "百里画廊-硅化木",
+    "region": "延庆区",
+    "price": "30元（不限次）",
+    "hours": "09:00-16:00",
+    "phone": "010-60188559",
+    "address": "延庆区千家店镇",
+    "free_policy": "1.2米以下、60岁以上、残疾人、现役免费",
+    "note": "4A",
+    "lat": 40.692626,
+    "lng": 116.350638,
+    "indoor": "mixed",
+    "category": "溶洞地质"
+  },
+  {
+    "name": "百里画廊-乌龙峡谷",
+    "region": "延庆区",
+    "price": "30元（不限次）",
+    "hours": "09:00-16:00",
+    "phone": "010-60188559",
+    "address": "延庆区千家店镇",
+    "free_policy": "1.2米以下、60岁以上、残疾人、现役免费",
+    "note": "4A",
+    "lat": 40.697882,
+    "lng": 116.459526,
+    "indoor": "outdoor",
+    "category": "自然山水"
+  },
+  {
+    "name": "百里画廊-恐龙乐园",
+    "region": "延庆区",
+    "price": "20元（不限次）",
+    "hours": "09:00-17:00",
+    "phone": "010-60188559",
+    "address": "延庆区千家店镇",
+    "free_policy": "1.2米以下、65岁以上免费",
+    "note": "4A",
+    "lat": 40.692626,
+    "lng": 116.350638,
+    "indoor": "mixed",
+    "category": "主题乐园"
+  },
+  {
+    "name": "青山园",
+    "region": "延庆区",
+    "price": "30元（不限次）",
+    "hours": "08:30-17:00",
+    "phone": "010-60181928",
+    "address": "延庆区刘斌堡乡234国道",
+    "free_policy": "",
+    "note": "",
+    "lat": 40.437216,
+    "lng": 115.986813,
+    "indoor": "outdoor",
+    "category": "公园花园"
+  },
+  {
+    "name": "古崖居风景区",
+    "region": "延庆区",
+    "price": "55元（不限次）",
+    "hours": "09:00-16:00",
+    "phone": "010-69110333",
+    "address": "延庆区古龙路东门营村",
+    "free_policy": "18岁以下、60岁以上、现役、残疾人免费",
+    "note": "3A",
+    "lat": 40.45054,
+    "lng": 115.794046,
+    "indoor": "outdoor",
+    "category": "自然山水"
+  },
+  {
+    "name": "碓臼石景区",
+    "region": "延庆区",
+    "price": "38元（不限次）",
+    "hours": "09:00-16:00",
+    "phone": "010-69173333",
+    "address": "延庆区井庄镇碓臼石村",
+    "free_policy": "3岁以下免费",
+    "note": "3A",
+    "lat": 40.368391,
+    "lng": 116.106293,
+    "indoor": "mixed",
+    "category": "自然山水"
+  },
+  {
+    "name": "玫瑰情园",
+    "region": "密云区",
+    "price": "33元（免2次）",
+    "hours": "09:00-17:00",
+    "phone": "010-61069959",
+    "address": "密云区巨各庄镇蔡家洼村",
+    "free_policy": "",
+    "note": "",
+    "lat": 40.357118,
+    "lng": 116.895005,
+    "indoor": "mixed",
+    "category": "公园花园"
+  },
+  {
+    "name": "仙居谷",
+    "region": "密云区",
+    "price": "36元（不限次）",
+    "hours": "08:00-16:30",
+    "phone": "010-69035388",
+    "address": "密云区太师屯镇安达木河",
+    "free_policy": "1.2米以下、65岁以上、残疾人免费",
+    "note": "4A",
+    "lat": 40.58736,
+    "lng": 117.233682,
+    "indoor": "outdoor",
+    "category": "自然山水"
+  },
+  {
+    "name": "雾灵西峰",
+    "region": "密云区",
+    "price": "40元（不限次）",
+    "hours": "08:00-17:00",
+    "phone": "010-81023988",
+    "address": "密云区沙滩村",
+    "free_policy": "1.2米以下、65岁以上、残疾人免费",
+    "note": "3A",
+    "lat": 40.635946,
+    "lng": 117.364811,
+    "indoor": "mixed",
+    "category": "自然山水"
+  },
+  {
+    "name": "排山汽车研学基地",
+    "region": "密云区",
+    "price": "70元（免2次）",
+    "hours": "08:00-17:30",
+    "phone": "13801031567",
+    "address": "密云区十里堡镇排山汽车城",
+    "free_policy": "",
+    "note": "",
+    "lat": 40.355519,
+    "lng": 116.79294,
+    "indoor": "outdoor",
+    "category": "科普研学"
+  },
+  {
+    "name": "传统插花博物馆",
+    "region": "密云区",
+    "price": "50元（免1次）",
+    "hours": "08:30-17:00",
+    "phone": "13801380896",
+    "address": "密云区十里堡镇十里堡村北",
+    "free_policy": "",
+    "note": "",
+    "lat": 40.358301,
+    "lng": 116.798305,
+    "indoor": "indoor",
+    "category": "博物馆展馆"
+  },
+  {
+    "name": "慕田峪长城",
+    "region": "怀柔区",
+    "price": "45元（免1次）",
+    "hours": "08:00-18:00",
+    "phone": "010-61626928",
+    "address": "怀柔区渤海镇慕田峪村",
+    "free_policy": "离休、残疾、养老助残卡、18岁以下免费",
+    "note": "5A",
+    "lat": 40.431668,
+    "lng": 116.565052,
+    "indoor": "outdoor",
+    "category": "长城古建"
+  },
+  {
+    "name": "石门山景区",
+    "region": "怀柔区",
+    "price": "35元（免1次）",
+    "hours": "08:00-17:30",
+    "phone": "010-69660398",
+    "address": "怀柔区怀北镇椴树岭村",
+    "free_policy": "残疾人免费",
+    "note": "3A",
+    "lat": 40.485373,
+    "lng": 116.66286,
+    "indoor": "outdoor",
+    "category": "自然山水"
+  },
+  {
+    "name": "石门山探险星球",
+    "region": "怀柔区",
+    "price": "30元（免1次）",
+    "hours": "08:00-18:00",
+    "phone": "15010165532",
+    "address": "怀柔区怀北镇椴树岭村",
+    "free_policy": "",
+    "note": "",
+    "lat": 40.485022,
+    "lng": 116.662504,
+    "indoor": "indoor",
+    "category": "主题乐园"
+  },
+  {
+    "name": "银狐洞",
+    "region": "房山区",
+    "price": "65元（免1次）",
+    "hours": "9:00-16:00",
+    "phone": "010-60363236",
+    "address": "房山区佛子庄乡下英水村",
+    "free_policy": "1.2米以下、残疾人、离休免费",
+    "note": "2A",
+    "lat": 39.79869,
+    "lng": 115.903983,
+    "indoor": "mixed",
+    "category": "溶洞地质"
+  },
+  {
+    "name": "孤山寨风景区",
+    "region": "房山区",
+    "price": "75元（免1次）",
+    "hours": "08:00-15:00",
+    "phone": "010-61349009",
+    "address": "房山区十渡地质公园七渡",
+    "free_policy": "1.2米或6岁以下、离休、残疾人免费",
+    "note": "4A",
+    "lat": 39.636629,
+    "lng": 115.585862,
+    "indoor": "outdoor",
+    "category": "自然山水"
+  },
+  {
+    "name": "昊天滑雪场",
+    "region": "房山区",
+    "price": "150元（免2次）",
+    "hours": "09:00-16:00",
+    "phone": "",
+    "address": "房山区东关街73号",
+    "free_policy": "",
+    "note": "",
+    "lat": 39.733698,
+    "lng": 116.150771,
+    "indoor": "outdoor",
+    "category": "滑雪冰雪"
+  },
+  {
+    "name": "昊天冰雪乐园",
+    "region": "房山区",
+    "price": "120元（免2次）",
+    "hours": "09:00-16:00",
+    "phone": "",
+    "address": "房山区东关街73号",
+    "free_policy": "",
+    "note": "",
+    "lat": 39.733698,
+    "lng": 116.150771,
+    "indoor": "mixed",
+    "category": "滑雪冰雪"
+  },
+  {
+    "name": "百花山",
+    "region": "门头沟区",
+    "price": "40元（免1次）",
+    "hours": "08:30-17:30",
+    "phone": "010-61826110",
+    "address": "门头沟区清水镇百花山林场",
+    "free_policy": "1.2米或6岁以下、65岁以上、现役/退役、残疾人免费",
+    "note": "3A",
+    "lat": 39.85743,
+    "lng": 115.616563,
+    "indoor": "outdoor",
+    "category": "自然山水"
+  },
+  {
+    "name": "京西古道",
+    "region": "门头沟区",
+    "price": "20元（免1次）",
+    "hours": "08:30-17:30",
+    "phone": "010-61880498",
+    "address": "门头沟区妙峰山镇水峪嘴村",
+    "free_policy": "1.2米以下、65岁以上、残疾人、消防员免费",
+    "note": "",
+    "lat": 39.966803,
+    "lng": 116.048993,
+    "indoor": "mixed",
+    "category": "自然山水"
+  },
+  {
+    "name": "灵水举人村",
+    "region": "门头沟区",
+    "price": "20元（不限次）",
+    "hours": "08:30-17:30",
+    "phone": "010-69812890",
+    "address": "门头沟区京拉路与高铺村口",
+    "free_policy": "1.2米以下、现役、65岁以上、消防、残疾、退役免费",
+    "note": "",
+    "lat": 40.002486,
+    "lng": 115.734106,
+    "indoor": "mixed",
+    "category": "生态文化"
+  },
+  {
+    "name": "北京南路烧酒博物馆",
+    "region": "大兴区",
+    "price": "60元（不限次）",
+    "hours": "08:00-16:00",
+    "phone": "010-58444355",
+    "address": "大兴区黄村镇桂村工业园",
+    "free_policy": "",
+    "note": "",
+    "lat": 39.702185,
+    "lng": 116.370958,
+    "indoor": "indoor",
+    "category": "博物馆展馆"
+  },
+  {
+    "name": "世界月季主题公园",
+    "region": "大兴区",
+    "price": "60元（不限次）",
+    "hours": "9:00-18:00",
+    "phone": "010-89250201",
+    "address": "大兴区魏北路28号",
+    "free_policy": "18岁以下、现役/退役、劳模、离休、军校生、60岁以上、残疾人免费",
+    "note": "",
+    "lat": 39.673389,
+    "lng": 116.41386,
+    "indoor": "outdoor",
+    "category": "公园花园"
+  },
+  {
+    "name": "留民营生态观光园",
+    "region": "大兴区",
+    "price": "60元（不限次）",
+    "hours": "9:00-16:00",
+    "phone": "010-80266003",
+    "address": "大兴区长子营镇留民营村",
+    "free_policy": "",
+    "note": "3A",
+    "lat": 39.692802,
+    "lng": 116.572802,
+    "indoor": "outdoor",
+    "category": "生态文化"
+  },
+  {
+    "name": "唐人坊人偶博物馆",
+    "region": "通州区",
+    "price": "98元（免2次）",
+    "hours": "08:00-16:30",
+    "phone": "13552160891",
+    "address": "通州区张家湾镇",
+    "free_policy": "",
+    "note": "",
+    "lat": 39.833932,
+    "lng": 116.74228,
+    "indoor": "indoor",
+    "category": "博物馆展馆"
+  },
+  {
+    "name": "天津盘山风景名胜区",
+    "region": "天津",
+    "price": "78元（免1次）",
+    "hours": "9:30-16:00",
+    "phone": "022-29821824",
+    "address": "天津市蓟州区官庄镇",
+    "free_policy": "1.2米或6岁以下、现役/退役、消防、70岁以上、残疾人免费",
+    "note": "5A",
+    "lat": 40.097171,
+    "lng": 117.282351,
+    "indoor": "outdoor",
+    "category": "自然山水"
+  },
+  {
+    "name": "天津文庙博物馆",
+    "region": "天津",
+    "price": "30元（不限次）",
+    "hours": "09:00-16:30",
+    "phone": "022-27275017",
+    "address": "天津南开区鼓楼东街2号",
+    "free_policy": "",
+    "note": "",
+    "lat": 39.141475,
+    "lng": 117.189445,
+    "indoor": "indoor",
+    "category": "博物馆展馆"
+  },
+  {
+    "name": "杨柳古镇民俗文化馆",
+    "region": "天津",
+    "price": "30元（不限次）",
+    "hours": "08:30-16:00",
+    "phone": "022-27948856",
+    "address": "天津西青区石家大院内",
+    "free_policy": "",
+    "note": "",
+    "lat": 39.136619,
+    "lng": 117.006709,
+    "indoor": "indoor",
+    "category": "博物馆展馆"
+  },
+  {
+    "name": "杨柳古镇年画馆",
+    "region": "天津",
+    "price": "10元（不限次）",
+    "hours": "08:30-16:00",
+    "phone": "022-27935066",
+    "address": "天津杨柳青估衣街52号",
+    "free_policy": "1.2米或6岁以下、70岁以上、残疾人、现役免费",
+    "note": "2A",
+    "lat": 39.097856,
+    "lng": 117.009057,
+    "indoor": "mixed",
+    "category": "博物馆展馆"
+  },
+  {
+    "name": "天津曙光水镇",
+    "region": "天津",
+    "price": "50元（免1次）",
+    "hours": "9:30-17:00",
+    "phone": "022-26998166",
+    "address": "天津北辰区西堤头镇",
+    "free_policy": "",
+    "note": "",
+    "lat": 39.297403,
+    "lng": 117.347629,
+    "indoor": "mixed",
+    "category": "水上游船"
+  },
+  {
+    "name": "崇泰庄园",
+    "region": "天津",
+    "price": "30元（不限次）",
+    "hours": "09:00-16:00",
+    "phone": "022-68775905",
+    "address": "天津静海区静台路",
+    "free_policy": "",
+    "note": "",
+    "lat": 38.980274,
+    "lng": 116.853476,
+    "indoor": "mixed",
+    "category": "生态文化"
+  },
+  {
+    "name": "精武门·中华武林园",
+    "region": "天津",
+    "price": "60元",
+    "hours": "09:00-16:00",
+    "phone": "022-87841118",
+    "address": "天津市西青区精武镇",
+    "free_policy": "",
+    "note": "4A",
+    "lat": 39.030424,
+    "lng": 117.131206,
+    "indoor": "mixed",
+    "category": "主题乐园"
+  },
+  {
+    "name": "独乐寺",
+    "region": "天津",
+    "price": "33元（免1次）",
+    "hours": "8:00-16:00",
+    "phone": "400-0505-139",
+    "address": "天津市蓟州区武定街41号",
+    "free_policy": "1.2米或6岁以下、70岁以上、警察、残疾、消防、退役/现役等免费",
+    "note": "4A",
+    "lat": 40.045417,
+    "lng": 117.402105,
+    "indoor": "mixed",
+    "category": "长城古建"
+  },
+  {
+    "name": "蓟州白塔寺",
+    "region": "天津",
+    "price": "9元（免1次）",
+    "hours": "8:00-16:00",
+    "phone": "400-0505-139",
+    "address": "天津市蓟州区武定街41号",
+    "free_policy": "同独乐寺",
+    "note": "",
+    "lat": 40.0425,
+    "lng": 117.403142,
+    "indoor": "mixed",
+    "category": "长城古建"
+  },
+  {
+    "name": "鲁班庙",
+    "region": "天津",
+    "price": "9元（免1次）",
+    "hours": "8:00-16:00",
+    "phone": "400-0505-139",
+    "address": "天津市蓟州区武定街41号",
+    "free_policy": "同独乐寺",
+    "note": "",
+    "lat": 40.04733,
+    "lng": 117.407719,
+    "indoor": "mixed",
+    "category": "长城古建"
+  },
+  {
+    "name": "滦河神韵",
+    "region": "张家口",
+    "price": "60元（不限次）",
+    "hours": "08:00-17:00",
+    "phone": "18832376070",
+    "address": "张家口沽源县转佛庙村",
+    "free_policy": "1.2米以下、70岁以上、现役、残疾、退役免费",
+    "note": "4A",
+    "lat": 41.785335,
+    "lng": 115.777464,
+    "indoor": "outdoor",
+    "category": "自然山水"
+  },
+  {
+    "name": "白河源",
+    "region": "张家口",
+    "price": "30元（不限次）",
+    "hours": "08:00-17:00",
+    "phone": "18632312757",
+    "address": "张家口沽源县026乡道",
+    "free_policy": "",
+    "note": "",
+    "lat": 41.623427,
+    "lng": 115.551012,
+    "indoor": "outdoor",
+    "category": "自然山水"
+  },
+  {
+    "name": "黄龙山庄",
+    "region": "张家口",
+    "price": "78元（不限次）",
+    "hours": "08:00-17:00",
+    "phone": "0313-6811309",
+    "address": "张家口怀来县于洪寺村",
+    "free_policy": "1.2米以下、70岁以上、残疾人免费",
+    "note": "4A",
+    "lat": 40.502527,
+    "lng": 115.46241,
+    "indoor": "outdoor",
+    "category": "长城古建"
+  },
+  {
+    "name": "大境门（登长城）",
+    "region": "张家口",
+    "price": "13元（不限次）",
+    "hours": "08:00-18:00",
+    "phone": "15373139117",
+    "address": "张家口桥西区清水河街",
+    "free_policy": "",
+    "note": "4A",
+    "lat": 40.838568,
+    "lng": 114.889204,
+    "indoor": "outdoor",
+    "category": "长城古建"
+  },
+  {
+    "name": "国玉陶瓷文化园",
+    "region": "张家口",
+    "price": "20元（不限次）",
+    "hours": "08:00-17:00",
+    "phone": "0313-3382895",
+    "address": "张家口宣化区幸福街",
+    "free_policy": "1.2米以下、70岁以上、残疾人免费",
+    "note": "3A",
+    "lat": 40.588319,
+    "lng": 115.079954,
+    "indoor": "mixed",
+    "category": "生态文化"
+  },
+  {
+    "name": "清西陵—泰陵",
+    "region": "保定",
+    "price": "45元（免1次）",
+    "hours": "08:00-17:30",
+    "phone": "0312-4710016",
+    "address": "保定市易县清西陵管理处",
+    "free_policy": "1.2米以下、70岁以上、残疾、现役/退役、献血者免费",
+    "note": "5A",
+    "lat": 39.371801,
+    "lng": 115.362235,
+    "indoor": "outdoor",
+    "category": "长城古建"
+  },
+  {
+    "name": "清西陵—崇陵",
+    "region": "保定",
+    "price": "45元（免1次）",
+    "hours": "08:00-17:30",
+    "phone": "0312-4710016",
+    "address": "保定市易县清西陵管理处",
+    "free_policy": "同泰陵",
+    "note": "5A",
+    "lat": 39.371801,
+    "lng": 115.362235,
+    "indoor": "outdoor",
+    "category": "长城古建"
+  },
+  {
+    "name": "清西陵—昌西陵",
+    "region": "保定",
+    "price": "20元（免1次）",
+    "hours": "08:00-17:30",
+    "phone": "0312-4710016",
+    "address": "保定市易县清西陵管理处",
+    "free_policy": "同泰陵",
+    "note": "5A",
+    "lat": 39.371801,
+    "lng": 115.362235,
+    "indoor": "outdoor",
+    "category": "长城古建"
+  },
+  {
+    "name": "清西陵—慕陵",
+    "region": "保定",
+    "price": "20元（免1次）",
+    "hours": "08:00-17:30",
+    "phone": "0312-4710016",
+    "address": "保定市易县清西陵管理处",
+    "free_policy": "同泰陵",
+    "note": "5A",
+    "lat": 39.371801,
+    "lng": 115.362235,
+    "indoor": "outdoor",
+    "category": "长城古建"
+  },
+  {
+    "name": "清西陵—永福寺",
+    "region": "保定",
+    "price": "20元",
+    "hours": "08:00-17:30",
+    "phone": "0312-4710016",
+    "address": "保定市易县清西陵管理处",
+    "free_policy": "同泰陵",
+    "note": "5A",
+    "lat": 39.371801,
+    "lng": 115.362235,
+    "indoor": "outdoor",
+    "category": "长城古建"
+  },
+  {
+    "name": "腰山王氏庄园",
+    "region": "保定",
+    "price": "30元（不限次）",
+    "hours": "08:30-17:00",
+    "phone": "0312-7671792",
+    "address": "保定市顺平县腰山镇",
+    "free_policy": "1.2米以下、70岁以上、残疾、现役、医护、消防免费",
+    "note": "3A",
+    "lat": 38.89286,
+    "lng": 115.217689,
+    "indoor": "outdoor",
+    "category": "长城古建"
+  },
+  {
+    "name": "云蒙山皇家公园",
+    "region": "保定",
+    "price": "45元（免1次）",
+    "hours": "08:00-15:00",
+    "phone": "0312-8263446",
+    "address": "保定市易县西陵镇",
+    "free_policy": "1.2米以下、70岁以上、残疾、现役免费",
+    "note": "3A",
+    "lat": 39.401129,
+    "lng": 115.235114,
+    "indoor": "outdoor",
+    "category": "自然山水"
+  },
+  {
+    "name": "保定曲阳北岳庙",
+    "region": "保定",
+    "price": "45元（不限次）",
+    "hours": "8:30-17:00",
+    "phone": "0312-4212155",
+    "address": "保定市曲阳县城内",
+    "free_policy": "18岁以下、60岁以上、残疾、现役/退役、消防免费",
+    "note": "4A",
+    "lat": 38.621213,
+    "lng": 114.697069,
+    "indoor": "mixed",
+    "category": "长城古建"
+  },
+  {
+    "name": "雄安保府酒文化园",
+    "region": "保定",
+    "price": "25元",
+    "hours": "08:00-16:00",
+    "phone": "17769056170",
+    "address": "保定市容城县金台西路",
+    "free_policy": "",
+    "note": "3A",
+    "lat": 39.053499,
+    "lng": 115.851424,
+    "indoor": "mixed",
+    "category": "酒庄酒文"
+  },
+  {
+    "name": "避暑山庄",
+    "region": "承德",
+    "price": "130元（免1次）",
+    "hours": "08:00-17:00",
+    "phone": "0314-2025918",
+    "address": "承德市双桥区丽正门路",
+    "free_policy": "冀籍退役、残疾、1.2米或6岁以下、60岁以上、现役、离休、医护免费",
+    "note": "5A",
+    "lat": 40.981288,
+    "lng": 117.941786,
+    "indoor": "outdoor",
+    "category": "长城古建"
+  },
+  {
+    "name": "金山岭长城",
+    "region": "承德",
+    "price": "60元（免1次）",
+    "hours": "08:00-17:00",
+    "phone": "0314-8830222",
+    "address": "承德市滦平县花楼沟村",
+    "free_policy": "冀籍献血者/退役/残军/烈属、1.2米或6岁以下、60岁以上、残疾、现役、离休免费",
+    "note": "5A",
+    "lat": 40.697879,
+    "lng": 117.248826,
+    "indoor": "outdoor",
+    "category": "长城古建"
+  },
+  {
+    "name": "南天丽景",
+    "region": "承德",
+    "price": "70元",
+    "hours": "08:00-17:00",
+    "phone": "0314-5645999",
+    "address": "承德市兴隆县南天门乡",
+    "free_policy": "1米以下儿童免费",
+    "note": "",
+    "lat": 40.374562,
+    "lng": 117.710387,
+    "indoor": "mixed",
+    "category": "自然山水"
+  },
+  {
+    "name": "绿溪谷",
+    "region": "承德",
+    "price": "138元",
+    "hours": "08:00-17:00",
+    "phone": "0314-5645999",
+    "address": "承德市兴隆县南天门村",
+    "free_policy": "1.2米以下免费",
+    "note": "",
+    "lat": 40.375301,
+    "lng": 117.712476,
+    "indoor": "outdoor",
+    "category": "自然山水"
+  },
+  {
+    "name": "神龙山风景区",
+    "region": "承德",
+    "price": "90元",
+    "hours": "08:00-17:00",
+    "phone": "13833405480",
+    "address": "承德市鹰手营子矿区",
+    "free_policy": "",
+    "note": "",
+    "lat": 40.572453,
+    "lng": 117.87026,
+    "indoor": "outdoor",
+    "category": "自然山水"
+  },
+  {
+    "name": "夹墙沟自然风景区",
+    "region": "承德",
+    "price": "50元",
+    "hours": "08:30-17:30",
+    "phone": "15632474665",
+    "address": "承德市双桥区桲椤树村",
+    "free_policy": "",
+    "note": "",
+    "lat": 40.984752,
+    "lng": 118.017771,
+    "indoor": "outdoor",
+    "category": "自然山水"
+  },
+  {
+    "name": "丰宁白云古洞",
+    "region": "承德",
+    "price": "30元",
+    "hours": "08:00-17:00",
+    "phone": "18932862230",
+    "address": "承德市丰宁县黑山嘴镇",
+    "free_policy": "1.2米或6岁以下、70岁以上、残疾、现役免费",
+    "note": "3A",
+    "lat": 41.043392,
+    "lng": 116.919763,
+    "indoor": "outdoor",
+    "category": "自然山水"
+  },
+  {
+    "name": "丰宁九龙松",
+    "region": "承德",
+    "price": "30元",
+    "hours": "08:00-17:00",
+    "phone": "0314-8294209",
+    "address": "承德市丰宁县五道营乡",
+    "free_policy": "同白云古洞",
+    "note": "3A",
+    "lat": 41.261599,
+    "lng": 116.517029,
+    "indoor": "mixed",
+    "category": "长城古建"
+  },
+  {
+    "name": "丰宁甘露禅院",
+    "region": "承德",
+    "price": "30元",
+    "hours": "08:00-17:00",
+    "phone": "13483864015",
+    "address": "承德市丰宁县喇嘛山",
+    "free_policy": "",
+    "note": "",
+    "lat": 41.37123,
+    "lng": 116.492094,
+    "indoor": "mixed",
+    "category": "长城古建"
+  },
+  {
+    "name": "金山湖龙脉水魔方",
+    "region": "承德",
+    "price": "30元",
+    "hours": "09:00-16:30",
+    "phone": "18001393935",
+    "address": "承德市兴隆县金山子村",
+    "free_policy": "",
+    "note": "",
+    "lat": 40.303084,
+    "lng": 117.653248,
+    "indoor": "indoor",
+    "category": "水上游船"
+  },
+  {
+    "name": "双石井德隆酒庄",
+    "region": "承德",
+    "price": "60元（免1次）",
+    "hours": "09:00-16:00",
+    "phone": "18730406211",
+    "address": "承德市兴隆县郭家庄",
+    "free_policy": "",
+    "note": "",
+    "lat": 40.376438,
+    "lng": 117.741403,
+    "indoor": "mixed",
+    "category": "酒庄酒文"
+  },
+  {
+    "name": "山楂博物馆",
+    "region": "承德",
+    "price": "60元（免1次）",
+    "hours": "08:00-17:00",
+    "phone": "13333399508",
+    "address": "承德市鹰手营子矿区北马圈子镇董庄大桥",
+    "free_policy": "",
+    "note": "含人工讲解",
+    "lat": 40.525054,
+    "lng": 117.634178,
+    "indoor": "indoor",
+    "category": "博物馆展馆"
+  },
+  {
+    "name": "三线博物馆",
+    "region": "承德",
+    "price": "60元（免1次）",
+    "hours": "08:00-17:00",
+    "phone": "13333399508",
+    "address": "承德市鹰手营子矿区怡达园区A区88号",
+    "free_policy": "",
+    "note": "含人工讲解",
+    "lat": 40.546424,
+    "lng": 117.659341,
+    "indoor": "indoor",
+    "category": "博物馆展馆"
+  },
+  {
+    "name": "根雕艺术博物馆",
+    "region": "承德",
+    "price": "60元（免1次）",
+    "hours": "08:00-17:00",
+    "phone": "13333399508",
+    "address": "承德市鹰手营子矿区怡达园区A区88号",
+    "free_policy": "",
+    "note": "含人工讲解",
+    "lat": 40.546424,
+    "lng": 117.659341,
+    "indoor": "indoor",
+    "category": "博物馆展馆"
+  },
+  {
+    "name": "天桂山",
+    "region": "石家庄",
+    "price": "65元（免1次）",
+    "hours": "08:00-18:00",
+    "phone": "0311-82827203",
+    "address": "石家庄市平山县北冶乡015县道",
+    "free_policy": "1.2米以下、70岁以上、残疾人、现役军人免费",
+    "note": "4A",
+    "lat": 38.257391,
+    "lng": 113.745863,
+    "indoor": "outdoor",
+    "category": "自然山水"
+  },
+  {
+    "name": "秋山风景区",
+    "region": "石家庄",
+    "price": "50元（不限次）",
+    "hours": "08:00-18:00",
+    "phone": "0311-89684888",
+    "address": "石家庄市灵寿县陈庄镇草坡庄",
+    "free_policy": "1.2米以下、70岁以上、残疾人、人民警察免费",
+    "note": "4A",
+    "lat": 38.532212,
+    "lng": 114.185498,
+    "indoor": "outdoor",
+    "category": "自然山水"
+  },
+  {
+    "name": "藤龙山",
+    "region": "石家庄",
+    "price": "65元（不限次）",
+    "hours": "07:30-18:00",
+    "phone": "0311-82878368",
+    "address": "石家庄市平山县王坡乡湾子村",
+    "free_policy": "1.2米以下、70岁以上、残疾人、现役军人免费",
+    "note": "4A",
+    "lat": 38.515181,
+    "lng": 114.115857,
+    "indoor": "outdoor",
+    "category": "自然山水"
+  },
+  {
+    "name": "黄金寨原生态旅游区",
+    "region": "石家庄",
+    "price": "60元（不限次）",
+    "hours": "08:00-17:30",
+    "phone": "0311-82899888",
+    "address": "石家庄市平山县王坡乡曹土沟村",
+    "free_policy": "1.2米以下、65岁以上、残疾人、现役、警察、港澳台免费",
+    "note": "4A",
+    "lat": 38.435884,
+    "lng": 114.06455,
+    "indoor": "outdoor",
+    "category": "自然山水"
+  },
+  {
+    "name": "王母山",
+    "region": "石家庄",
+    "price": "60元（不限次）",
+    "hours": "08:00-17:00",
+    "phone": "0311-82860999",
+    "address": "石家庄市平山县王坡乡营盘村",
+    "free_policy": "1.2米以下、65岁以上、残疾人、现役、港澳台免费",
+    "note": "4A",
+    "lat": 38.492622,
+    "lng": 114.09704,
+    "indoor": "outdoor",
+    "category": "自然山水"
+  },
+  {
+    "name": "黑山大峡谷",
+    "region": "石家庄",
+    "price": "65元（不限次）",
+    "hours": "08:00-17:30",
+    "phone": "0311-82887788",
+    "address": "石家庄市平山县营里乡黑山关村",
+    "free_policy": "1.2米以下、70岁以上、残疾人、现役军人免费",
+    "note": "4A",
+    "lat": 38.544922,
+    "lng": 113.598323,
+    "indoor": "outdoor",
+    "category": "自然山水"
+  },
+  {
+    "name": "伏羲台",
+    "region": "石家庄",
+    "price": "15元（不限次）",
+    "hours": "08:00-17:00",
+    "phone": "0311-88587792",
+    "address": "石家庄市新乐市何家庄村东",
+    "free_policy": "18岁以下、60岁以上、残疾、现役/退役、教师、消防免费",
+    "note": "3A",
+    "lat": 38.381372,
+    "lng": 114.716111,
+    "indoor": "mixed",
+    "category": "长城古建"
+  },
+  {
+    "name": "迪云山顶风景区",
+    "region": "石家庄",
+    "price": "60元（不限次）",
+    "hours": "08:00-17:00",
+    "phone": "0311-82870999",
+    "address": "石家庄市平山县南甸镇寨北乡",
+    "free_policy": "1.2米以下、65岁以上、残疾人、现役军人免费",
+    "note": "3A",
+    "lat": 38.235851,
+    "lng": 114.199364,
+    "indoor": "outdoor",
+    "category": "自然山水"
+  },
+  {
+    "name": "秦皇古驿道",
+    "region": "石家庄",
+    "price": "25元（不限次）",
+    "hours": "08:00-17:30",
+    "phone": "0311-82341890",
+    "address": "石家庄市井陉县白皮关附近",
+    "free_policy": "1.2米以下、70岁以上、残疾、现役/退役免费；学生/60-69岁半价",
+    "note": "",
+    "lat": 38.052978,
+    "lng": 114.190919,
+    "indoor": "mixed",
+    "category": "长城古建"
+  },
+  {
+    "name": "民族风情园",
+    "region": "石家庄",
+    "price": "80元（不限次）",
+    "hours": "08:00-17:30",
+    "phone": "0311-82890888",
+    "address": "石家庄市平山县王坡乡迪山北村",
+    "free_policy": "1.2米以下、65岁以上、残疾人、现役军人免费",
+    "note": "",
+    "lat": 38.446255,
+    "lng": 114.086124,
+    "indoor": "mixed",
+    "category": "生态文化"
+  },
+  {
+    "name": "唐山迁安成山景区",
+    "region": "唐山",
+    "price": "40元（不限次）",
+    "hours": "08:00-17:00",
+    "phone": "15233388160",
+    "address": "唐山市迁安市太平庄乡尚庄村西",
+    "free_policy": "1.2米以下、70岁以上、残疾、现役/退役军人免费",
+    "note": "",
+    "lat": 39.923648,
+    "lng": 118.465836,
+    "indoor": "outdoor",
+    "category": "自然山水"
+  },
+  {
+    "name": "广平府署",
+    "region": "邯郸",
+    "price": "108元（免1次）",
+    "hours": "08:30-17:00",
+    "phone": "0310-6666773",
+    "address": "邯郸市永年区广府镇",
+    "free_policy": "70岁以上、1.2米以下儿童免费",
+    "note": "5A",
+    "lat": 36.703733,
+    "lng": 114.733327,
+    "indoor": "mixed",
+    "category": "长城古建"
+  },
+  {
+    "name": "广府古城墙",
+    "region": "邯郸",
+    "price": "20元（免1次）",
+    "hours": "08:30-17:00",
+    "phone": "0310-6612266",
+    "address": "邯郸市永年区广府镇人民路口",
+    "free_policy": "",
+    "note": "5A",
+    "lat": 36.701691,
+    "lng": 114.735936,
+    "indoor": "mixed",
+    "category": "长城古建"
+  },
+  {
+    "name": "杨露禅故居",
+    "region": "邯郸",
+    "price": "20元（免1次）",
+    "hours": "08:30-17:00",
+    "phone": "18849053232",
+    "address": "邯郸市永年区广府镇广府专线",
+    "free_policy": "70岁以上、1.2米以下、现役、残疾人免费",
+    "note": "5A",
+    "lat": 36.693275,
+    "lng": 114.729692,
+    "indoor": "indoor",
+    "category": "长城古建"
+  },
+  {
+    "name": "武禹襄故居",
+    "region": "邯郸",
+    "price": "20元（免1次）",
+    "hours": "08:30-17:00",
+    "phone": "0310-6612266",
+    "address": "邯郸市永年区广府镇东街",
+    "free_policy": "70岁以上、1.2米以下、现役/退役、残疾人免费",
+    "note": "5A",
+    "lat": 36.70156,
+    "lng": 114.735406,
+    "indoor": "indoor",
+    "category": "长城古建"
+  },
+  {
+    "name": "弘济桥",
+    "region": "邯郸",
+    "price": "20元（免1次）",
+    "hours": "08:30-17:00",
+    "phone": "0310-6612266",
+    "address": "邯郸市永年区广府古城东桥村",
+    "free_policy": "",
+    "note": "5A",
+    "lat": 36.704213,
+    "lng": 114.764038,
+    "indoor": "mixed",
+    "category": "长城古建"
+  },
+  {
+    "name": "明十三陵-神路",
+    "region": "昌平区",
+    "price": "30元（免3次）",
+    "hours": "8:30-17:00",
+    "phone": "010-60761005",
+    "address": "昌平区十三陵镇大宫门北",
+    "free_policy": "1.2米以下、60岁以上、残疾人、现役军人免费",
+    "note": "5A",
+    "lat": 40.267414,
+    "lng": 116.231176,
+    "indoor": "outdoor",
+    "category": "长城古建"
+  },
+  {
+    "name": "阳台山自然风景区",
+    "region": "海淀区",
+    "price": "10元（不限次）",
+    "hours": "07:30-17:00",
+    "phone": "010-62456816",
+    "address": "海淀区阳台山路与秀峰寺路口",
+    "free_policy": "60岁以上、现役军人、消防员免费",
+    "note": "3A",
+    "lat": 40.0805,
+    "lng": 116.1805,
+    "indoor": "outdoor",
+    "category": "自然山水"
+  },
+  {
+    "name": "朝阳寺风景区",
+    "region": "延庆区",
+    "price": "15元（不限次）",
+    "hours": "09:00-16:00",
+    "phone": "010-60188559",
+    "address": "延庆区东囤路",
+    "free_policy": "1.2米以下、现役、离休、残疾、消防、65岁以上免费",
+    "note": "",
+    "lat": 40.691856,
+    "lng": 116.33481,
+    "indoor": "outdoor",
+    "category": "长城古建"
+  },
+  {
+    "name": "灵慧山景区",
+    "region": "怀柔区",
+    "price": "33元（不限次）",
+    "hours": "08:00-16:30",
+    "phone": "010-89601286",
+    "address": "怀柔区西甘路甘涧峪村",
+    "free_policy": "1.2米以下、残疾人免费",
+    "note": "",
+    "lat": 40.398971,
+    "lng": 116.582374,
+    "indoor": "outdoor",
+    "category": "自然山水"
+  },
+  {
+    "name": "京东大溶洞",
+    "region": "平谷区",
+    "price": "80元（免1次）",
+    "hours": "08:30-17:00",
+    "phone": "010-60971708",
+    "address": "平谷区黄松峪乡村",
+    "free_policy": "1.2米或6岁以下、残疾人免费",
+    "note": "",
+    "lat": 40.140805,
+    "lng": 117.121589,
+    "indoor": "outdoor",
+    "category": "溶洞地质"
+  },
+  {
+    "name": "杨柳古镇石家大院",
+    "region": "天津",
+    "price": "30元（免1次）",
+    "hours": "08:30-17:00",
+    "phone": "022-27391617",
+    "address": "天津西青区估衣街47号",
+    "free_policy": "1.2米以下、60岁以上、退役/现役、学生免费",
+    "note": "4A",
+    "lat": 39.126253,
+    "lng": 116.999432,
+    "indoor": "mixed",
+    "category": "博物馆展馆"
+  },
+  {
+    "name": "蓟州文庙",
+    "region": "天津",
+    "price": "9元（免1次）",
+    "hours": "8:00-16:00",
+    "phone": "400-0505-139",
+    "address": "天津市蓟州区武定街41号",
+    "free_policy": "同独乐寺",
+    "note": "",
+    "lat": 40.047376,
+    "lng": 117.406922,
+    "indoor": "mixed",
+    "category": "长城古建"
+  },
+  {
+    "name": "鸡鸣山",
+    "region": "张家口",
+    "price": "54元（不限次）",
+    "hours": "08:30-16:30",
+    "phone": "0313-5151548",
+    "address": "张家口怀来县鸡鸣山景区",
+    "free_policy": "1.2米以下、70岁以上、现役/退役免费",
+    "note": "4A",
+    "lat": 40.415625,
+    "lng": 115.517868,
+    "indoor": "outdoor",
+    "category": "自然山水"
+  },
+  {
+    "name": "刘伶醉景区",
+    "region": "保定",
+    "price": "38元（不限次）",
+    "hours": "08:00-17:30",
+    "phone": "16631200016",
+    "address": "保定市徐水区振兴中路",
+    "free_policy": "",
+    "note": "4A",
+    "lat": 39.050035,
+    "lng": 115.488385,
+    "indoor": "mixed",
+    "category": "酒庄酒文"
+  },
+  {
+    "name": "岸芷汀兰露营基地",
+    "region": "承德",
+    "price": "120元（免1次）",
+    "hours": "08:00-17:00",
+    "phone": "13333399508",
+    "address": "承德市南双洞营地",
+    "free_policy": "",
+    "note": "",
+    "lat": 40.417358,
+    "lng": 117.500558,
+    "indoor": "mixed",
+    "category": "生态文化"
+  },
+  {
+    "name": "遵化万佛园",
+    "region": "唐山",
+    "price": "50元（不限次）",
+    "hours": "08:30-17:00",
+    "phone": "0315-6948585",
+    "address": "唐山市遵化市清东陵西一公里处",
+    "free_policy": "",
+    "note": "4A",
+    "lat": 40.17451,
+    "lng": 117.63665,
+    "indoor": "mixed",
+    "category": "长城古建"
+  }
+];
+</script>
+    <script>
+    // 数据源来自 spots-data.js (window.SPOTS)，与 geocoded_spots.json 同步生成。
+    const spots = (typeof window.SPOTS !== 'undefined') ? window.SPOTS : [];
+
+    // ===== 导航配置（高德 Web 服务路线优先，OSRM 兜底）=====
+    // 使用高德「Web服务」key，浏览器端经 JSONP 调用 restapi 驾驶路线，无需安全密钥。
+    const AMAP_KEY = 'edc7ab98fc99a8848ba7e5898cb02f43';
+    let USE_AMAP = true;          // 高德优先；失败一次后自动降级 OSRM 不再重试
+    let amapFailed = false;
+    function jsonp(url, timeout = 12000) {
+        return new Promise((resolve, reject) => {
+            const cbid = '_amapcb_' + Math.random().toString(36).slice(2);
+            const sep = url.includes('?') ? '&' : '?';
+            const s = document.createElement('script');
+            const timer = setTimeout(() => { cleanup(); reject(new Error('请求超时')); }, timeout);
+            function cleanup() { clearTimeout(timer); delete window[cbid]; if (s.parentNode) s.parentNode.removeChild(s); }
+            window[cbid] = (data) => { cleanup(); resolve(data); };
+            s.onerror = () => { cleanup(); reject(new Error('网络错误')); };
+            s.src = url + sep + 'callback=' + cbid;
+            document.head.appendChild(s);
+        });
+    }
+
+    // 坐标互转：底图 OpenStreetMap 为 WGS-84；高德接口为 GCJ-02。
+    function outOfChina(lng, lat) { return !(lng > 73.66 && lng < 135.05 && lat > 3.86 && lat < 53.55); }
+    function transformlat(lng, lat) {
+        let r = -100 + 2*lng + 3*lat + 0.2*lat*lat + 0.1*lng*lat + 0.2*Math.sqrt(Math.abs(lng));
+        r += (20*Math.sin(6*lng*Math.PI) + 20*Math.sin(2*lng*Math.PI)) * 2/3;
+        r += (20*Math.sin(lat*Math.PI) + 40*Math.sin(lat/3*Math.PI)) * 2/3;
+        r += (160*Math.sin(lat/12*Math.PI) + 320*Math.sin(lat*Math.PI/30)) * 2/3;
+        return r;
+    }
+    function transformlng(lng, lat) {
+        let r = 300 + lng + 2*lat + 0.1*lng*lng + 0.1*lng*lat + 0.1*Math.sqrt(Math.abs(lng));
+        r += (20*Math.sin(6*lng*Math.PI) + 20*Math.sin(2*lng*Math.PI)) * 2/3;
+        r += (20*Math.sin(lng*Math.PI) + 40*Math.sin(lng/3*Math.PI)) * 2/3;
+        r += (150*Math.sin(lng/12*Math.PI) + 300*Math.sin(lng/30*Math.PI)) * 2/3;
+        return r;
+    }
+    function wgs84togcj02(lng, lat) {
+        if (outOfChina(lng, lat)) return [lng, lat];
+        const a = 6378245.0, ee = 0.00669342162296594323;
+        let dlat = transformlat(lng - 105.0, lat - 35.0);
+        let dlng = transformlng(lng - 105.0, lat - 35.0);
+        const radlat = lat / 180.0 * Math.PI;
+        let magic = Math.sin(radlat); magic = 1 - ee*magic*magic;
+        const sqrtmagic = Math.sqrt(magic);
+        dlat = (dlat*180.0) / ((a*(1-ee)) / (magic*sqrtmagic) * Math.PI);
+        dlng = (dlng*180.0) / (a / sqrtmagic * Math.cos(radlat) * Math.PI);
+        return [lng + dlng, lat + dlat];
+    }
+    function gcj02towgs84(lng, lat) {
+        if (outOfChina(lng, lat)) return [lng, lat];
+        const [glng, glat] = wgs84togcj02(lng, lat);
+        return [lng - (glng - lng), lat - (glat - lat)];
+    }
+
+    // ===== 地图初始化 =====
+    const map = L.map('map', { center: [40.0, 116.5], zoom: 8, minZoom: 6, maxZoom: 18 });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors', maxZoom: 18
+    }).addTo(map);
+
+    // 聚合分组（无插件时回退为直接加 marker）
+    const useCluster = typeof L.markerClusterGroup === 'function';
+    const cluster = useCluster ? L.markerClusterGroup({ chunkedLoading: true }) : null;
+    if (cluster) map.addLayer(cluster);
+
+    // ===== 状态 =====
+    let markers = [];
+    let userMarker = null;
+    let userPos = null;            // {lat, lng, label}
+    const activeFilters = { regionTop: 'all', region: 'all', level: 'all', price: 'all', indoor: 'all', category: 'all', search: '' };
+    // 区域两级：北京（区名均以「区」结尾）+ 其他（天津、河北各市）
+    const isBeijingRegion = r => String(r).endsWith('区');
+    const ALL_REGIONS = [...new Set(spots.map(s => s.region))].sort();
+    const OTHER_REGIONS = ALL_REGIONS.filter(r => !isBeijingRegion(r));
+
+    // ===== 工具函数 =====
+    function getRegionCategory(region) {
+        const urban = ['东城区','西城区','朝阳区','海淀区','丰台区','石景山区'];
+        if (urban.includes(region)) return 'urban';
+        const suburban = ['昌平区','顺义区','延庆区','密云区','怀柔区','房山区','门头沟区','平谷区','大兴区','通州区'];
+        if (suburban.includes(region)) return 'suburban';
+        if (region === '天津') return 'tianjin';
+        return 'hebei';
+    }
+    function getMarkerColor(c) {
+        return ({ urban:'#e74c3c', suburban:'#e67e22', hebei:'#3498db', tianjin:'#9b59b6' })[c] || '#95a5a6';
+    }
+    function getSpotEmoji(name) {
+        if (/滑雪|冰雪/.test(name)) return '🎿';
+        if (/温泉|汤泉/.test(name)) return '♨️';
+        if (/博物馆|故居|文化园|非遗|书院|图书馆|美术馆|科技馆/.test(name)) return '🏛️';
+        if (/乐园|游乐场|蹦床|探险|亲子|网绳/.test(name)) return '🎠';
+        if (/长城|陵|寺|庙|古|遗址/.test(name)) return '🏯';
+        if (/山|谷|峡|湖|河|森林|公园|生态/.test(name)) return '🏔️';
+        return '📍';
+    }
+    // 分类 emoji / 标签（来自单一数据源 SPOTS_CATEGORIES）
+    const CAT_EMOJI = {}, CAT_LABEL = {};
+    (window.SPOTS_CATEGORIES || []).forEach(c => { CAT_EMOJI[c.key] = c.emoji; CAT_LABEL[c.key] = c.label; });
+    function catEmoji(spot) { return CAT_EMOJI[spot.category] || '📍'; }
+    function catLabel(spot) { return CAT_LABEL[spot.category] || '其他'; }
+    function haversine(lat1, lng1, lat2, lng2) {
+        const R = 6371, r1 = lat1*Math.PI/180, r2 = lat2*Math.PI/180;
+        const dphi = (lat2-lat1)*Math.PI/180, dl = (lng2-lng1)*Math.PI/180;
+        const a = Math.sin(dphi/2)**2 + Math.cos(r1)*Math.cos(r2)*Math.sin(dl/2)**2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+    function distTo(spot) {
+        if (!userPos || !spot.lat || !spot.lng) return null;
+        return haversine(userPos.lat, userPos.lng, spot.lat, spot.lng);
+    }
+
+    // ===== 标记构建 =====
+    function createMarker(spot) {
+        const category = getRegionCategory(spot.region);
+        const color = getMarkerColor(category);
+        const emoji = catEmoji(spot);
+        const icon = L.divIcon({
+            className: '', html: `<div class="custom-marker" style="background:${color}">${emoji}</div>`,
+            iconSize: [26, 26], iconAnchor: [13, 13], popupAnchor: [0, -13]
+        });
+        const m = L.marker([spot.lat, spot.lng], { icon }).bindPopup(buildPopup(spot), { maxWidth: 300 });
+        m.spotData = spot;
+        return m;
+    }
+
+    // ===== 过滤 + 渲染 =====
+    function matchFilters(spot) {
+        const f = activeFilters;
+        // 一级：北京 / 其他
+        if (f.regionTop !== 'all') {
+            const isBJ = isBeijingRegion(spot.region);
+            if (f.regionTop === 'beijing' && !isBJ) return false;
+            if (f.regionTop === 'other' && isBJ) return false;
+        }
+        // 二级：具体区 / 市
+        if (f.region !== 'all' && spot.region !== f.region) return false;
+        if (f.level !== 'all') {
+            const lvl = (spot.note||'').trim();
+            if (f.level === 'none') { if (['5A','4A','3A','2A'].includes(lvl)) return false; }
+            else if (lvl !== f.level) return false;
+        }
+        if (f.price !== 'all') {
+            const p = spot.price || '';
+            if (f.price==='unlimited' && !/不限次/.test(p)) return false;
+            if (f.price==='free1' && !/免1次/.test(p)) return false;
+            if (f.price==='free2' && !/免2次/.test(p)) return false;
+            if (f.price==='free3' && !/免3次/.test(p)) return false;
+        }
+        if (f.indoor !== 'all') {
+            // 室内 = indoor+mixed；室外 = outdoor+mixed
+            if (f.indoor==='indoor' && !['indoor','mixed'].includes(spot.indoor)) return false;
+            if (f.indoor==='outdoor' && !['outdoor','mixed'].includes(spot.indoor)) return false;
+        }
+        if (f.category !== 'all' && spot.category !== f.category) return false;
+        if (f.search) {
+            const q = f.search.toLowerCase();
+            const hay = [spot.name, spot.region, spot.address, spot.free_policy, spot.price].join(' ').toLowerCase();
+            if (!hay.includes(q)) return false;
+        }
+        return true;
+    }
+
+    function applyFilters() {
+        let visible = 0;
+        const visibleSpots = [];
+        markers.forEach(m => {
+            const spot = m.spotData;
+            if (matchFilters(spot)) {
+                if (cluster) { if (!cluster.hasLayer(m)) cluster.addLayer(m); }
+                else if (!map.hasLayer(m)) m.addTo(map);
+                visible++; visibleSpots.push(spot);
+            } else {
+                if (cluster) { if (cluster.hasLayer(m)) cluster.removeLayer(m); }
+                else if (map.hasLayer(m)) map.removeLayer(m);
+            }
+        });
+        document.getElementById('stats').textContent = `显示 ${visible} / ${spots.length} 个景点`;
+        renderList(visibleSpots);
+    }
+
+    function renderList(list) {
+        const ul = document.getElementById('result-list');
+        ul.innerHTML = '';
+        // 定位后按距离升序
+        if (userPos) list = list.slice().sort((a,b) => (distTo(a)??1e9) - (distTo(b)??1e9));
+        list.forEach(spot => {
+            const li = document.createElement('li');
+            const lvl = (spot.note||'').trim();
+            let lvlBadge = '';
+            if (['5A','4A','3A','2A'].includes(lvl)) lvlBadge = `<span class="badge badge-${lvl.toLowerCase()}">${lvl}</span>`;
+            const inBadge = spot.indoor==='indoor' ? '<span class="badge badge-in">室内</span>'
+                         : spot.indoor==='outdoor' ? '<span class="badge badge-out">室外</span>' : '';
+            const catBadge = `<span class="badge badge-cat">${catEmoji(spot)} ${catLabel(spot)}</span>`;
+            const d = distTo(spot);
+            const dist = d != null ? `<span class="r-dist">${d.toFixed(1)}km</span>` : '';
+            li.innerHTML = `<div class="r-name">${catEmoji(spot)} ${spot.name}</div>
+                <div class="r-meta">${dist} ${lvlBadge} ${inBadge} ${catBadge} <span>${spot.region}</span></div>`;
+            li.onclick = () => {
+                map.flyTo([spot.lat, spot.lng], 13, { duration: 0.6 });
+                markers.forEach(m => { if (m.spotData === spot) setTimeout(() => m.openPopup(), 650); });
+            };
+            ul.appendChild(li);
+        });
+    }
+
+    // ===== 定位 =====
+    function locateMe() {
+        if (!navigator.geolocation) { alert('当前浏览器不支持定位，请用「观林园」预设。'); return; }
+        navigator.geolocation.getCurrentPosition(
+            pos => setUserPos(pos.coords.latitude, pos.coords.longitude, '我的位置'),
+            err => alert('定位失败（' + err.message + '），可改用「观林园」预设。')
+        );
+    }
+    function setPreset(lat, lng, label) { setUserPos(lat, lng, label); }
+    function setUserPos(lat, lng, label) {
+        userPos = { lat, lng, label };
+        if (userMarker) map.removeLayer(userMarker);
+        userMarker = L.circleMarker([lat, lng], { radius: 8, color: '#2ecc71', fillColor: '#2ecc71', fillOpacity: .9, weight: 3 })
+            .addTo(map).bindPopup(`📍 ${label}`).openPopup();
+        map.flyTo([lat, lng], 11, { duration: 0.6 });
+        // 刷新弹出框距离 & 列表排序
+        markers.forEach(m => m.setPopupContent(buildPopup(m.spotData)));
+        applyFilters();
+    }
+    function clearLocation() {
+        userPos = null;
+        if (userMarker) { map.removeLayer(userMarker); userMarker = null; }
+        markers.forEach(m => m.setPopupContent(buildPopup(m.spotData)));
+        applyFilters();
+    }
+    // 重建弹出框（用于定位后更新距离）
+    function buildPopup(spot) {
+        const category = getRegionCategory(spot.region);
+        const color = getMarkerColor(category);
+        const emoji = getSpotEmoji(spot.name);
+        const lvl = (spot.note||'').trim();
+        let badge = '';
+        if (['5A','4A','3A','2A'].includes(lvl)) badge = `<span class="popup-badge badge-${lvl.toLowerCase()}">${lvl}</span>`;
+        const d = distTo(spot);
+        const distLine = d != null ? `<div class="popup-row"><strong>距离：</strong>${d.toFixed(1)} km（${userPos.label}）</div>` : '';
+        return `<div class="popup-card">
+            <h3>${emoji} ${spot.name} ${badge}</h3>
+            <div class="popup-row"><strong>地区：</strong>${spot.region}　<span class="badge ${spot.indoor==='indoor'?'badge-in':(spot.indoor==='outdoor'?'badge-out':'')}">${spot.indoor==='indoor'?'室内':(spot.indoor==='outdoor'?'室外':'室内/外')}</span></div>
+            <div class="popup-row"><strong>票价：</strong>${spot.price||'—'}</div>
+            ${spot.hours?`<div class="popup-row"><strong>时间：</strong>${spot.hours}</div>`:''}
+            ${distLine}
+            ${spot.phone?`<div class="popup-row"><strong>电话：</strong>${spot.phone}</div>`:''}
+            ${spot.address?`<div class="popup-row"><strong>地址：</strong>${spot.address}</div>`:''}
+            ${spot.free_policy?`<div class="popup-row"><strong>免票：</strong>${spot.free_policy}</div>`:''}
+            <div class="popup-nav-row">
+                <button class="popup-nav-btn nav-inapp" data-idx="${spots.indexOf(spot)}">🧭 App内导航</button>
+                <a class="popup-nav nav-amap" target="_blank" href="https://uri.amap.com/marker?position=${spot.lng},${spot.lat}&name=${encodeURIComponent(spot.name)}&coordinate=gaode&callnative=0">高德网页</a>
+            </div></div>`;
+    }
+
+    // ===== App 内导航（不跳出本页）=====
+    let routeLine = null, amapLoading = false, pendingRoute = null;
+    function fmtDist(m) { return m >= 1000 ? (m/1000).toFixed(1) + ' km' : Math.round(m) + ' m'; }
+    function fmtTime(s) { const m = Math.round(s/60); return m >= 60 ? (Math.floor(m/60) + ' 小时 ' + (m%60) + ' 分') : (m + ' 分钟'); }
+    function maneuverText(t) {
+        return ({ 'depart':'出发', 'arrive':'到达', 'turn-left':'左转', 'turn-right':'右转', 'sharp-left':'急左转',
+            'sharp-right':'急右转', 'slight-left':'微左转', 'slight-right':'微右转', 'straight':'直行',
+            'merge':'并入', 'ramp':'上匝道', 'roundabout':'环岛', 'fork':'分叉', 'end-of-road':'尽头转弯' })[t] || '继续';
+    }
+    function setRouteStatus(msg) {
+        const el = document.getElementById('route-summary');
+        if (el) el.textContent = msg;
+    }
+    function setRouteError(msg) { setRouteStatus('⚠️ ' + msg); }
+    function closeRoute() {
+        if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
+        document.getElementById('route-panel').style.display = 'none';
+    }
+    function drawRoute(coords, steps, engine, spot, origin) {
+        if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
+        routeLine = L.polyline(coords, { color: '#764ba2', weight: 5, opacity: 0.85 }).addTo(map);
+        map.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
+        const td = steps.reduce((a, s) => a + (s.dist || 0), 0);
+        const tt = steps.reduce((a, s) => a + (s.time || 0), 0);
+        document.getElementById('route-title').textContent = '🧭 到 ' + spot.name;
+        document.getElementById('route-summary').innerHTML =
+            '<span>起点：' + origin.label + '</span><span>引擎：' + engine + '</span>' +
+            '<span>总距：' + (td/1000).toFixed(1) + ' km</span><span>约 ' + Math.round(tt/60) + ' 分钟</span>';
+        document.getElementById('route-steps').innerHTML = steps.map((s, i) =>
+            '<div class="route-step"><span class="rs-num">' + (i+1) + '</span><div>' +
+            '<div class="rs-text">' + s.text + '</div>' +
+            '<div class="rs-dist">' + fmtDist(s.dist || 0) + ' · ' + fmtTime(s.time || 0) + '</div></div></div>'
+        ).join('');
+        document.getElementById('route-panel').style.display = 'flex';
+    }
+    function routeWithAMap(o, d, spot) {
+        const [olng, olat] = wgs84togcj02(o.lng, o.lat);
+        const [dlng, dlat] = wgs84togcj02(d.lng, d.lat);
+        const url = 'https://restapi.amap.com/v3/direction/driving?key=' + AMAP_KEY
+            + '&origin=' + olng + ',' + olat
+            + '&destination=' + dlng + ',' + dlat
+            + '&extensions=all&strategy=0&output=JSON';
+        jsonp(url).then(data => {
+            if (data.status !== '1' || !data.route || !data.route.paths || !data.route.paths.length) {
+                throw new Error(data.info || '高德无可用路线');
+            }
+            const path = data.route.paths[0];
+            const coords = [], steps = [];
+            path.steps.forEach(st => {
+                (st.polyline || '').split(';').forEach(pair => {
+                    if (!pair) return;
+                    const pr = pair.split(','); const glng = +pr[0], glat = +pr[1];
+                    const [wlat, wlng] = gcj02towgs84(glng, glat);
+                    coords.push([wlat, wlng]);
+                });
+                steps.push({ text: st.instruction || '继续', dist: +st.distance || 0, time: +st.duration || 0 });
+            });
+            drawRoute(coords, steps, '高德', spot, o);
+        }).catch(err => {
+            amapFailed = true; USE_AMAP = false;
+            setRouteError('高德路线失败（' + err.message + '），已切换通用路线');
+            routeWithOSRM(o, d, spot);
+        });
+    }
+    function routeWithOSRM(o, d, spot) {
+        const url = 'https://router.project-osrm.org/route/v1/driving/' + o.lng + ',' + o.lat + ';' +
+                    d.lng + ',' + d.lat + '?geometries=geojson&overview=full&steps=true';
+        fetch(url).then(r => r.json()).then(js => {
+            if (!js.routes || !js.routes.length) throw new Error('无可用路线');
+            const route = js.routes[0];
+            const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
+            const steps = (route.legs[0].steps || []).map(st => ({
+                text: maneuverText(st.maneuver && st.maneuver.type) + (st.name ? '（' + st.name + '）' : ''),
+                dist: st.distance, time: st.duration
+            }));
+            drawRoute(coords, steps, '通用(OSRM)', spot, o);
+        }).catch(err => setRouteError('路线计算失败：' + err.message));
+    }
+    function startRoute(spot) {
+        if (!spot) return;
+        const o = userPos ? userPos : { lat: 40.0430, lng: 116.3330, label: '观林园(默认起点)' };
+        const d = { lat: spot.lat, lng: spot.lng };
+        pendingRoute = { o, d, spot };
+        document.getElementById('route-panel').style.display = 'flex';
+        document.getElementById('route-title').textContent = '🧭 规划到 ' + spot.name + '…';
+        setRouteStatus('路线计算中，请稍候…');
+        document.getElementById('route-steps').innerHTML = '';
+        if (USE_AMAP) routeWithAMap(o, d, spot);
+        else routeWithOSRM(o, d, spot);
+    }
+    // 弹出框「App内导航」按钮（事件委托）
+    document.addEventListener('click', e => {
+        const btn = e.target.closest && e.target.closest('.nav-inapp');
+        if (!btn) return;
+        const sp = spots[+btn.dataset.idx];
+        if (sp) startRoute(sp);
+    });
+
+    // ===== 初始化 =====
+    function init() {
+        // ===== 区域两级筛选 =====
+        const topEl = document.getElementById('region-top');
+        const subEl = document.getElementById('region-sub');
+        topEl.innerHTML = '<span class="chip active" data-top="all">全部</span>'
+                        + '<span class="chip" data-top="beijing">北京</span>'
+                        + '<span class="chip" data-top="other">其他</span>';
+        function renderSubRegions(top) {
+            let list = [];
+            if (top === 'beijing') list = ALL_REGIONS.filter(r => isBeijingRegion(r));
+            else if (top === 'other') list = OTHER_REGIONS;
+            if (!list.length) { subEl.innerHTML = '<span class="chip-hint">选择上方区域查看细分</span>'; return; }
+            subEl.innerHTML = '<span class="chip active" data-region="all">全部</span>'
+                            + list.map(r => `<span class="chip" data-region="${r}">${r}</span>`).join('');
+        }
+        renderSubRegions('all');
+
+        spots.forEach(s => {
+            const m = createMarker(s);
+            markers.push(m);
+            if (cluster) cluster.addLayer(m); else m.addTo(map);
+        });
+
+        topEl.addEventListener('click', e => {
+            if (!e.target.classList.contains('chip')) return;
+            document.querySelectorAll('#region-top .chip').forEach(c => c.classList.remove('active'));
+            e.target.classList.add('active');
+            activeFilters.regionTop = e.target.dataset.top;
+            activeFilters.region = 'all';
+            renderSubRegions(activeFilters.regionTop);
+            applyFilters();
+        });
+        subEl.addEventListener('click', e => {
+            if (!e.target.classList.contains('chip')) return;
+            document.querySelectorAll('#region-sub .chip').forEach(c => c.classList.remove('active'));
+            e.target.classList.add('active');
+            activeFilters.region = e.target.dataset.region;
+            applyFilters();
+        });
+        document.getElementById('level-filters').addEventListener('click', e => {
+            if (!e.target.classList.contains('chip')) return;
+            document.querySelectorAll('#level-filters .chip').forEach(c => c.classList.remove('active'));
+            e.target.classList.add('active');
+            activeFilters.level = e.target.dataset.level; applyFilters();
+        });
+        document.getElementById('price-filters').addEventListener('click', e => {
+            if (!e.target.classList.contains('chip')) return;
+            document.querySelectorAll('#price-filters .chip').forEach(c => c.classList.remove('active'));
+            e.target.classList.add('active');
+            activeFilters.price = e.target.dataset.price; applyFilters();
+        });
+        // 景点类型筛选（来自单一数据源 SPOTS_CATEGORIES）
+        const catEl = document.getElementById('category-filters');
+        const cats = window.SPOTS_CATEGORIES || [];
+        catEl.innerHTML = '<span class="chip active" data-category="all">全部</span>'
+                        + cats.map(c => `<span class="chip" data-category="${c.key}">${c.emoji} ${c.label}</span>`).join('');
+        catEl.addEventListener('click', e => {
+            if (!e.target.classList.contains('chip')) return;
+            document.querySelectorAll('#category-filters .chip').forEach(c => c.classList.remove('active'));
+            e.target.classList.add('active');
+            activeFilters.category = e.target.dataset.category; applyFilters();
+        });
+        document.getElementById('indoor-filters').addEventListener('click', e => {
+            if (!e.target.classList.contains('chip')) return;
+            document.querySelectorAll('#indoor-filters .chip').forEach(c => c.classList.remove('active'));
+            e.target.classList.add('active');
+            activeFilters.indoor = e.target.dataset.indoor; applyFilters();
+        });
+        document.getElementById('search-box').addEventListener('input', e => {
+            activeFilters.search = e.target.value.trim(); applyFilters();
+        });
+        document.getElementById('route-close').addEventListener('click', closeRoute);
+
+        applyFilters();
+    }
+
+    function toggleSidebar() {
+        const sb = document.getElementById('sidebar');
+        const btn = document.getElementById('toggle-sidebar');
+        if (sb.style.display === 'none') {
+            sb.style.display = 'flex'; btn.style.left = '310px';
+            document.getElementById('map').style.left = '300px';
+        } else {
+            sb.style.display = 'none'; btn.style.left = '10px';
+            document.getElementById('map').style.left = '0';
+        }
+        setTimeout(() => map.invalidateSize(), 200);
+    }
+
+    if (spots.length === 0) {
+        document.getElementById('header-sub').textContent = '未加载到数据：请确认 spots-data.js 与本文件在同一目录';
+    }
+    init();
+
+    // ===== PWA Service Worker 注册（可安装到主屏 / 离线缓存）=====
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+    }
+    </script>
+</body>
+</html>

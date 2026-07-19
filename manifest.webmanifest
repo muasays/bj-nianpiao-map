@@ -1,0 +1,15 @@
+{
+  "name": "北京公园年票地图",
+  "short_name": "北京年票",
+  "description": "北京/京津冀公园年票景点地图 · 分类筛选 · App 内导航",
+  "lang": "zh-CN",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#667eea",
+  "theme_color": "#667eea",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
