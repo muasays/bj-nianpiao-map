@@ -2139,11 +2139,10 @@ window.SPOTS = [
 
     // ===== 地图初始化 =====
     const map = L.map('map', { center: [40.0, 116.5], zoom: 8, minZoom: 6, maxZoom: 18 });
-    // 底图：高德栅格瓦片（国内稳定、中文标注、无需 key）
-    L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', {
-        attribution: '© 高德地图',
-        maxZoom: 18,
-        subdomains: '1234'
+    // 底图：OpenStreetMap（全球覆盖稳定）
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors',
+        maxZoom: 18
     }).addTo(map);
 
     // 聚合分组（无插件时回退为直接加 marker）
@@ -2367,10 +2366,8 @@ window.SPOTS = [
         if (!coords || coords.length < 2) { setRouteError('路线坐标无效'); return; }
         const allSame = coords.every(c => c[0] === coords[0][0] && c[1] === coords[0][1]);
         if (allSame && coords.length > 2) { setRouteError('路线坐标退化，无法显示'); return; }
-        routeLine = L.polyline(coords, { color: opts.color || '#764ba2', weight: 5, opacity: 0.85 }).addTo(map);
-        try { map.fitBounds(routeLine.getBounds(), { padding: [40, 40], maxZoom: 17 }); } catch(e) { /* fitBounds 失败不影响面板 */ }
-        // 强制重绘瓦片，避免导航后底图灰屏（Leaflet 经典问题）
-        setTimeout(() => map.invalidateSize(), 80);
+
+        // ★ 关键：先展示面板（改变布局）→ 通知地图容器尺寸变化 → 再画线+定位
         const td = steps.reduce((a, s) => a + (s.dist || 0), 0);
         const tt = steps.reduce((a, s) => a + (s.time || 0), 0);
         document.getElementById('route-title').textContent = '🧭 到 ' + spot.name;
@@ -2384,6 +2381,13 @@ window.SPOTS = [
             '<div class="rs-dist">' + fmtDist(s.dist || 0) + ' · ' + fmtTime(s.time || 0) + '</div></div></div>'
         ).join('');
         document.getElementById('route-panel').style.display = 'flex';
+
+        // 面板已展开，通知 Leaflet 容器尺寸变了（避免 fitBounds 用旧尺寸算错缩放）
+        map.invalidateSize();
+
+        // 现在画线并定位到正确视口
+        routeLine = L.polyline(coords, { color: opts.color || '#764ba2', weight: 5, opacity: 0.85 }).addTo(map);
+        try { map.fitBounds(routeLine.getBounds(), { padding: [40, 40], maxZoom: 17 }); } catch(e) { /* fitBounds 失败不影响面板 */ }
     }
     function routeWithAMap(o, d, spot, mode) {
         mode = mode || 'driving';
