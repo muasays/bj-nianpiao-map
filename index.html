@@ -123,6 +123,9 @@
         .rs-num { flex-shrink:0; width:22px; height:22px; border-radius:50%; background:#764ba2; color:#fff; font-size:12px; display:flex; align-items:center; justify-content:center; }
         .rs-text { font-size:13px; color:#333; line-height:1.5; }
         .rs-dist { font-size:11px; color:#999; margin-top:2px; }
+        .route-modes { display:flex; gap:8px; padding:8px 14px; border-bottom:1px solid #f2f2f2; }
+        .rmode { flex:1; padding:7px 0; border:1px solid #ddd; border-radius:14px; background:#fff; font-size:13px; color:#666; cursor:pointer; transition:all .15s; }
+        .rmode.active { background:#764ba2; border-color:#764ba2; color:#fff; font-weight:600; }
         @media (max-width: 768px) {
             .route-panel { left: 0; max-height: 50%; }
         }
@@ -232,6 +235,11 @@
         <div class="route-head">
             <span id="route-title">🧭 路线规划</span>
             <button id="route-close" class="route-close">✕</button>
+        </div>
+        <div id="route-modes" class="route-modes">
+            <button class="rmode active" data-mode="driving">🚗 驾车</button>
+            <button class="rmode" data-mode="walking">🚶 步行</button>
+            <button class="rmode" data-mode="taxi">🚕 的士</button>
         </div>
         <div id="route-summary" class="route-summary"></div>
         <div id="route-steps" class="route-steps"></div>
@@ -2074,6 +2082,13 @@ window.SPOTS = [
     const AMAP_KEY = 'edc7ab98fc99a8848ba7e5898cb02f43';
     let USE_AMAP = true;          // 高德优先；失败一次后自动降级 OSRM 不再重试
     let amapFailed = false;
+    let routeMode = 'driving';    // 'driving' 驾车 | 'walking' 步行 | 'taxi' 的士(复用驾车+估费)
+    // 北京出租车费率粗估：起步13元/3km，超出约2.3元/km（不含夜间/低速附加）
+    function estimateTaxiFare(distMeters) {
+        const km = distMeters / 1000;
+        if (km <= 3) return 13;
+        return Math.round((13 + Math.ceil(km - 3) * 2.3) * 10) / 10;
+    }
     function jsonp(url, timeout = 12000) {
         return new Promise((resolve, reject) => {
             const cbid = '_amapcb_' + Math.random().toString(36).slice(2);
@@ -2342,16 +2357,18 @@ window.SPOTS = [
         if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
         document.getElementById('route-panel').style.display = 'none';
     }
-    function drawRoute(coords, steps, engine, spot, origin) {
+    function drawRoute(coords, steps, engine, spot, origin, opts) {
+        opts = opts || {};
         if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
-        routeLine = L.polyline(coords, { color: '#764ba2', weight: 5, opacity: 0.85 }).addTo(map);
+        routeLine = L.polyline(coords, { color: opts.color || '#764ba2', weight: 5, opacity: 0.85 }).addTo(map);
         map.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
         const td = steps.reduce((a, s) => a + (s.dist || 0), 0);
         const tt = steps.reduce((a, s) => a + (s.time || 0), 0);
         document.getElementById('route-title').textContent = '🧭 到 ' + spot.name;
-        document.getElementById('route-summary').innerHTML =
-            '<span>起点：' + origin.label + '</span><span>引擎：' + engine + '</span>' +
-            '<span>总距：' + (td/1000).toFixed(1) + ' km</span><span>约 ' + Math.round(tt/60) + ' 分钟</span>';
+        let summary = '<span>起点：' + origin.label + '</span><span>方式：' + (opts.modeLabel || engine) + '</span>'
+            + '<span>总距：' + (td/1000).toFixed(1) + ' km</span><span>约 ' + Math.round(tt/60) + ' 分钟</span>';
+        if (opts.taxi) summary += '<span>预估打车费 ≈ ' + estimateTaxiFare(td) + ' 元</span>';
+        document.getElementById('route-summary').innerHTML = summary;
         document.getElementById('route-steps').innerHTML = steps.map((s, i) =>
             '<div class="route-step"><span class="rs-num">' + (i+1) + '</span><div>' +
             '<div class="rs-text">' + s.text + '</div>' +
@@ -2359,13 +2376,17 @@ window.SPOTS = [
         ).join('');
         document.getElementById('route-panel').style.display = 'flex';
     }
-    function routeWithAMap(o, d, spot) {
+    function routeWithAMap(o, d, spot, mode) {
+        mode = mode || 'driving';
         const [olng, olat] = wgs84togcj02(o.lng, o.lat);
         const [dlng, dlat] = wgs84togcj02(d.lng, d.lat);
-        const url = 'https://restapi.amap.com/v3/direction/driving?key=' + AMAP_KEY
+        const ep = (mode === 'walking') ? 'walking' : 'driving';   // taxi 复用 driving
+        const url = 'https://restapi.amap.com/v3/direction/' + ep + '?key=' + AMAP_KEY
             + '&origin=' + olng + ',' + olat
             + '&destination=' + dlng + ',' + dlat
-            + '&extensions=all&strategy=0&output=JSON';
+            + '&extensions=all' + (ep === 'driving' ? '&strategy=0' : '') + '&output=JSON';
+        const isTaxi = (mode === 'taxi');
+        const modeLabel = { driving:'驾车', walking:'步行', taxi:'的士' }[mode] || '驾车';
         jsonp(url).then(data => {
             if (data.status !== '1' || !data.route || !data.route.paths || !data.route.paths.length) {
                 throw new Error(data.info || '高德无可用路线');
@@ -2381,14 +2402,17 @@ window.SPOTS = [
                 });
                 steps.push({ text: st.instruction || '继续', dist: +st.distance || 0, time: +st.duration || 0 });
             });
-            drawRoute(coords, steps, '高德', spot, o);
+            drawRoute(coords, steps, '高德', spot, o, { taxi: isTaxi, modeLabel });
         }).catch(err => {
             amapFailed = true; USE_AMAP = false;
             setRouteError('高德路线失败（' + err.message + '），已切换通用路线');
-            routeWithOSRM(o, d, spot);
+            routeWithOSRM(o, d, spot, mode);
         });
     }
-    function routeWithOSRM(o, d, spot) {
+    function routeWithOSRM(o, d, spot, mode) {
+        mode = mode || 'driving';
+        const isTaxi = (mode === 'taxi');
+        const modeLabel = { driving:'驾车', walking:'步行', taxi:'的士' }[mode] || '驾车';
         const url = 'https://router.project-osrm.org/route/v1/driving/' + o.lng + ',' + o.lat + ';' +
                     d.lng + ',' + d.lat + '?geometries=geojson&overview=full&steps=true';
         fetch(url).then(r => r.json()).then(js => {
@@ -2399,8 +2423,14 @@ window.SPOTS = [
                 text: maneuverText(st.maneuver && st.maneuver.type) + (st.name ? '（' + st.name + '）' : ''),
                 dist: st.distance, time: st.duration
             }));
-            drawRoute(coords, steps, '通用(OSRM)', spot, o);
+            drawRoute(coords, steps, '通用(OSRM)', spot, o, { taxi: isTaxi, modeLabel });
         }).catch(err => setRouteError('路线计算失败：' + err.message));
+    }
+    function runRoute() {
+        if (!pendingRoute) return;
+        const { o, d, spot } = pendingRoute;
+        if (USE_AMAP) routeWithAMap(o, d, spot, routeMode);
+        else routeWithOSRM(o, d, spot, routeMode);
     }
     function startRoute(spot) {
         if (!spot) return;
@@ -2411,11 +2441,17 @@ window.SPOTS = [
         document.getElementById('route-title').textContent = '🧭 规划到 ' + spot.name + '…';
         setRouteStatus('路线计算中，请稍候…');
         document.getElementById('route-steps').innerHTML = '';
-        if (USE_AMAP) routeWithAMap(o, d, spot);
-        else routeWithOSRM(o, d, spot);
+        runRoute();
     }
-    // 弹出框「App内导航」按钮（事件委托）
+    // 出行方式切换 + 弹出框「App内导航」按钮（事件委托）
     document.addEventListener('click', e => {
+        const chip = e.target.closest && e.target.closest('.rmode');
+        if (chip) {
+            routeMode = chip.dataset.mode;
+            document.querySelectorAll('.rmode').forEach(c => c.classList.toggle('active', c === chip));
+            if (pendingRoute) { setRouteStatus('切换方式，重新计算中…'); runRoute(); }
+            return;
+        }
         const btn = e.target.closest && e.target.closest('.nav-inapp');
         if (!btn) return;
         const sp = spots[+btn.dataset.idx];
