@@ -150,14 +150,8 @@
             #map { top: 220px; left: 0; }
             #toggle-sidebar { left: 10px; top: 230px; }
         }
-
-        /* ★ v4.4 关键 CSS：面板展开时让地图 DOM 容器实际缩小到 55% 高，
-           面板不再覆盖地图，Leaflet 拿到的容器尺寸 = 真实可见区尺寸 */
-        #map.route-active { bottom: 45% !important; }
-        @media (max-width: 768px) {
-            #map.route-active { bottom: 50% !important; }
-        }
-    </style></head>
+    </style>
+</head>
 <body>
     <div id="sidebar">
         <div id="sidebar-header">
@@ -2363,10 +2357,7 @@ window.SPOTS = [
     function setRouteError(msg) { setRouteStatus('⚠️ ' + msg); }
     function closeRoute() {
         if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
-        // ★ v4.4：先移除 route-active class 让地图 DOM 容器恢复全屏高，再关面板，再 rAF invalidateSize
-        document.getElementById('map').classList.remove('route-active');
         document.getElementById('route-panel').style.display = 'none';
-        requestAnimationFrame(() => map.invalidateSize());
     }
     function drawRoute(coords, steps, engine, spot, origin, opts) {
         opts = opts || {};
@@ -2392,15 +2383,9 @@ window.SPOTS = [
         // ★ v4.3 修复（截图证据：fitBounds 对长路线会触发低zoom瓦片丢失问题）
         //   改用 setView 显式指定 center + zoom，避开 fitBounds 内部逻辑
         //   zoom 根据路线的经纬度跨度自适应：跨度越大 zoom 越低
-        // ★ v4.4 升级（另一个 AI 的关键洞察）：面板是 absolute 浮层，原 #map DOM 容器还是全屏高，
-        //   Leaflet 拿不到真实可见区尺寸 → 路线中心被算到被面板遮盖的位置。
-        //   现在 .route-active class 让 #map 实际 bottom: 45%，容器真实缩到 55% 高。
-        //   打开面板 → 加 class → rAF 等 CSS 生效 → invalidateSize → setView 拿真尺寸算中心
         routeLine = L.polyline(coords, { color: opts.color || '#764ba2', weight: 5, opacity: 0.85 }).addTo(map);
-        document.getElementById('route-panel').style.display = 'flex';
-        document.getElementById('map').classList.add('route-active');
+        document.getElementById('route-panel').style.display = 'flex'; document.getElementById('map').classList.add('route-active'); map.invalidateSize();
         requestAnimationFrame(() => {
-            map.invalidateSize();
             try {
                 const b = routeLine.getBounds();
                 if (!b.isValid()) return;
@@ -2419,6 +2404,7 @@ window.SPOTS = [
                 else if (spread > 0.1) zoom = 13;
                 else zoom = 14;
                 map.setView([c.lat, c.lng], zoom, { animate: false });
+                // 强制瓦片层重绘，避免部分瓦片未更新
                 setTimeout(() => {
                     map.eachLayer(layer => { if (layer instanceof L.TileLayer) layer.redraw(); });
                 }, 50);
@@ -2487,9 +2473,7 @@ window.SPOTS = [
         const o = userPos ? userPos : { lat: 40.0430, lng: 116.3330, label: '观林园(默认起点)' };
         const d = { lat: spot.lat, lng: spot.lng };
         pendingRoute = { o, d, spot };
-        document.getElementById('route-panel').style.display = 'flex';
-        // ★ v4.4：让 #map DOM 容器实际缩到 55% 高，面板不再覆盖地图
-        document.getElementById('map').classList.add('route-active');
+        document.getElementById('route-panel').style.display = 'flex'; document.getElementById('map').classList.add('route-active'); map.invalidateSize();
         document.getElementById('route-title').textContent = '🧭 规划到 ' + spot.name + '…';
         setRouteStatus('路线计算中，请稍候…');
         document.getElementById('route-steps').innerHTML = '';
