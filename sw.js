@@ -1,5 +1,5 @@
 // 北京年票地图 Service Worker —— 离线缓存应用外壳，提升二次打开与「添加到主屏幕」体验。
-const CACHE = 'bj-nianpiao-v6';
+const CACHE = 'bj-nianpiao-v7';
 const ASSETS = [
   '.',
   'index.html',

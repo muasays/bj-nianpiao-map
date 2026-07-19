@@ -2380,14 +2380,35 @@ window.SPOTS = [
             '<div class="rs-text">' + s.text + '</div>' +
             '<div class="rs-dist">' + fmtDist(s.dist || 0) + ' · ' + fmtTime(s.time || 0) + '</div></div></div>'
         ).join('');
-        // ★ v4.2 修复（诊断结论：tiles 不受影响，根因是 fitBounds 逻辑）
-        //   单次 rAF 等布局稳定 → fitBounds(animate:false) → 不再调 invalidateSize
+        // ★ v4.3 修复（截图证据：fitBounds 对长路线会触发低zoom瓦片丢失问题）
+        //   改用 setView 显式指定 center + zoom，避开 fitBounds 内部逻辑
+        //   zoom 根据路线的经纬度跨度自适应：跨度越大 zoom 越低
         routeLine = L.polyline(coords, { color: opts.color || '#764ba2', weight: 5, opacity: 0.85 }).addTo(map);
         document.getElementById('route-panel').style.display = 'flex';
         requestAnimationFrame(() => {
             try {
-                map.fitBounds(routeLine.getBounds(), { padding: [50, 50], maxZoom: 17, animate: false });
-            } catch(e) {}
+                const b = routeLine.getBounds();
+                if (!b.isValid()) return;
+                const c = b.getCenter();
+                const ne = b.getNorthEast(), sw = b.getSouthWest();
+                const spread = Math.max(ne.lat - sw.lat, ne.lng - sw.lng);
+                // 跨度（度）→ 合适的 zoom
+                let zoom;
+                if (spread > 6) zoom = 6;
+                else if (spread > 4) zoom = 7;
+                else if (spread > 2.5) zoom = 8;
+                else if (spread > 1.5) zoom = 9;
+                else if (spread > 0.8) zoom = 10;
+                else if (spread > 0.4) zoom = 11;
+                else if (spread > 0.2) zoom = 12;
+                else if (spread > 0.1) zoom = 13;
+                else zoom = 14;
+                map.setView([c.lat, c.lng], zoom, { animate: false });
+                // 强制瓦片层重绘，避免部分瓦片未更新
+                setTimeout(() => {
+                    map.eachLayer(layer => { if (layer instanceof L.TileLayer) layer.redraw(); });
+                }, 50);
+            } catch(e) { console.error('setView error:', e); }
         });
     }
     function routeWithAMap(o, d, spot, mode) {
