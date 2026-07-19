@@ -2380,26 +2380,12 @@ window.SPOTS = [
             '<div class="rs-text">' + s.text + '</div>' +
             '<div class="rs-dist">' + fmtDist(s.dist || 0) + ' · ' + fmtTime(s.time || 0) + '</div></div></div>'
         ).join('');
-        document.getElementById('route-panel').style.display = 'flex';
-
-        // 先加矢量路线层（SVG 渲染独立于栅格瓦片层，不受影响）
+        // ★ 诊断模式（v4.1）：只画线 + 显示面板，不调 fitBounds / invalidateSize / 不改地图视图
+        //   目标：确认地图灰屏是否由视图变化触发。若此版本正常（底图+线都可见），
+        //   则根因是 fitBounds 相关；若仍然灰屏，则根因在面板弹出/画线本身。
         routeLine = L.polyline(coords, { color: opts.color || '#764ba2', weight: 5, opacity: 0.85 }).addTo(map);
-
-        // ★ 核心修复（对抗式审查结论）：
-        //   面板是 position:absolute 浮层，不 resize 地图；但 display:flex 切换后布局是异步的。
-        //   若在布局未完成时同步调用 invalidateSize+fitBounds，瓦片层（栅格）会卡在错误视口不重绘 → 灰屏；
-        //   而紫色路线（SVG 矢量）照常渲染 → 出现「线在、底图不在」。
-        //   用 rAF 等一帧让布局稳定，再 fitBounds；并排除底部被面板遮挡的 45%，让路线框进可见区。
-        requestAnimationFrame(() => {
-            map.invalidateSize();
-            const b = routeLine.getBounds();
-            const occl = Math.round(map.getSize().y * 0.45) + 20;  // 面板遮挡底部约 45%
-            try {
-                map.fitBounds(b, { paddingTopLeft: [40, 40], paddingBottomRight: [40, occl], maxZoom: 17 });
-            } catch(e) { /* fitBounds 失败不影响面板 */ }
-            // fitBounds 后再补一次 invalidateSize，强制栅格瓦片层重绘
-            setTimeout(() => map.invalidateSize(), 0);
-        });
+        document.getElementById('route-panel').style.display = 'flex';
+        setRouteStatus('✅ 路线已画出（诊断模式：未改变地图视图）');
     }
     function routeWithAMap(o, d, spot, mode) {
         mode = mode || 'driving';
