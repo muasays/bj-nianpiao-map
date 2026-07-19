@@ -2380,12 +2380,15 @@ window.SPOTS = [
             '<div class="rs-text">' + s.text + '</div>' +
             '<div class="rs-dist">' + fmtDist(s.dist || 0) + ' · ' + fmtTime(s.time || 0) + '</div></div></div>'
         ).join('');
-        // ★ 诊断模式（v4.1）：只画线 + 显示面板，不调 fitBounds / invalidateSize / 不改地图视图
-        //   目标：确认地图灰屏是否由视图变化触发。若此版本正常（底图+线都可见），
-        //   则根因是 fitBounds 相关；若仍然灰屏，则根因在面板弹出/画线本身。
+        // ★ v4.2 修复（诊断结论：tiles 不受影响，根因是 fitBounds 逻辑）
+        //   单次 rAF 等布局稳定 → fitBounds(animate:false) → 不再调 invalidateSize
         routeLine = L.polyline(coords, { color: opts.color || '#764ba2', weight: 5, opacity: 0.85 }).addTo(map);
         document.getElementById('route-panel').style.display = 'flex';
-        setRouteStatus('✅ 路线已画出（诊断模式：未改变地图视图）');
+        requestAnimationFrame(() => {
+            try {
+                map.fitBounds(routeLine.getBounds(), { padding: [50, 50], maxZoom: 17, animate: false });
+            } catch(e) {}
+        });
     }
     function routeWithAMap(o, d, spot, mode) {
         mode = mode || 'driving';
