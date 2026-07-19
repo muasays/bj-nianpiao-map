@@ -2371,8 +2371,12 @@ window.SPOTS = [
     function drawRoute(coords, steps, engine, spot, origin, opts) {
         opts = opts || {};
         if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
-        // 防御：坐标为空或全部相同时不画线
+        // 防御：坐标为空、纬度非法（|lat|>90）、或全部相同时不画线
+        // 历史 bug：gcj02towgs84 返回 [lng,lat] 被误当成 [lat,lng]，lat≈116 会把地图拉飞
         if (!coords || coords.length < 2) { setRouteError('路线坐标无效'); return; }
+        coords = coords.filter(c => Array.isArray(c) && isFinite(c[0]) && isFinite(c[1])
+            && Math.abs(c[0]) <= 90 && Math.abs(c[1]) <= 180);
+        if (coords.length < 2) { setRouteError('路线坐标无效（经纬度顺序或范围错误）'); return; }
         const allSame = coords.every(c => c[0] === coords[0][0] && c[1] === coords[0][1]);
         if (allSame && coords.length > 2) { setRouteError('路线坐标退化，无法显示'); return; }
 
@@ -2447,7 +2451,8 @@ window.SPOTS = [
                     if (!pair) return;
                     const pr = pair.split(','); const glng = +pr[0], glat = +pr[1];
                     if (!isFinite(glng) || !isFinite(glat)) return;   // 跳过 NaN/Infinity，避免 fitBounds 失效
-                    const [wlat, wlng] = gcj02towgs84(glng, glat);
+                    // gcj02towgs84 返回 [lng, lat]；Leaflet polyline 需要 [lat, lng]
+                    const [wlng, wlat] = gcj02towgs84(glng, glat);
                     coords.push([wlat, wlng]);
                 });
                 steps.push({ text: st.instruction || '继续', dist: +st.distance || 0, time: +st.duration || 0 });
